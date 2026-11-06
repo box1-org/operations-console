@@ -21,7 +21,9 @@ spec:
   - name: git-auth-secret
     value: "{{git_auth_secret}}"
   - name: security-gates
-    value: disabled
+    # Same enforcement as the other box1 services (review REL-1). RHACS scans the image; the bundled npm
+    # packages inside the jar are not assessed separately (their lockfile pins exact versions and integrity).
+    value: gate
   pipelineSpec:
     params:
     - name: revision
@@ -135,6 +137,59 @@ spec:
         value: "operations-console"
       - name: application-namespace
         value: "operations-console-dev"
+    - name: console-smoke
+      runAfter:
+      - smoke
+      when:
+      - input: "$(tasks.promote.results.promoted)"
+        operator: in
+        values:
+        - 'true'
+      taskSpec:
+        steps:
+        - name: console
+          image: registry.access.redhat.com/ubi9/python-311@sha256:d0b35f779ca0ae87deaf17cd1923461904f52d3ef249a53dbd487e02bdabdde6
+          script: |
+            #!/usr/bin/env python3
+            # Console-specific release checks (review REL-3), read-only: the shared smoke covers only template paths.
+            import time, urllib.error, urllib.parse, urllib.request
+            base = 'https://operations-console-dev.apps.ocp.box1.org'
+            class NoRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, *args, **kwargs):
+                    return None
+            plain = urllib.request.build_opener(NoRedirect)
+            def call(url, accept='text/html'):
+                deadline = time.time() + 120
+                while True:
+                    try:
+                        with plain.open(urllib.request.Request(url, headers={'Accept': accept}), timeout=20) as r:
+                            status, headers, body = r.status, r.headers, r.read().decode(errors='replace')
+                    except urllib.error.HTTPError as e:
+                        status, headers, body = e.code, e.headers, e.read().decode(errors='replace')
+                    if status not in (502, 503, 504) or time.time() > deadline:
+                        return status, headers, body
+                    time.sleep(5)
+            # A page sends an anonymous user to Keycloak with this client and PKCE.
+            status, headers, _ = call(base + '/orders')
+            location = headers.get('Location', '')
+            assert status == 302, status
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(location).query)
+            assert location.startswith('https://keycloak.apps.ocp.box1.org/auth/realms/box1/'), location.split('?')[0]
+            assert query.get('client_id') == ['operations-console'] and query.get('code_challenge_method') == ['S256'], 'client or PKCE'
+            assert query.get('redirect_uri') == [base + '/callback'], 'redirect_uri'
+            # Keycloak knows the client and accepts its redirect URI (a login page, not an error).
+            status, _, body = call(location)
+            assert status == 200 and 'kc-form-login' in body, 'Keycloak login page not shown: ' + str(status)
+            # The console API refuses anonymous callers with 401, not a redirect.
+            status, headers, _ = call(base + '/api/v1/me', 'application/json')
+            assert status == 401 and 'Location' not in headers, status
+            # The public sign-out page is served with the console's CSP.
+            status, headers, _ = call(base + '/signed-out.html')
+            assert status == 200 and "default-src 'self'" in headers.get('Content-Security-Policy', ''), status
+            # The deployed contract includes the console API.
+            status, _, spec = call(base + '/q/openapi?format=json', 'application/json')
+            assert status == 200 and '/api/v1/orders' in spec and '/api/v1/me' in spec, status
+            print('console smoke passed')
     results:
     - name: image-digest
       value: "$(tasks.build.results.image-digest)"

@@ -1,0 +1,140 @@
+{
+  "realm": "box1",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "operations-console",
+      "name": "box1 Operations console (local e2e copy of the D-002 declaration)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "http://localhost:18080/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:18080"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:18080/signed-out.html"
+      },
+      "defaultClientScopes": [
+        "profile",
+        "roles"
+      ],
+      "protocolMappers": [
+        {
+          "name": "operations-console-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "operations-console",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "operations-console": [
+        {
+          "name": "console-viewer",
+          "description": "Read every console page"
+        },
+        {
+          "name": "console-operator",
+          "description": "Viewer, plus place orders"
+        },
+        {
+          "name": "console-developer",
+          "description": "Viewer, plus delivery revisions"
+        }
+      ]
+    }
+  },
+  "users": [
+    {
+      "username": "vera",
+      "enabled": true,
+      "email": "vera@example.invalid",
+      "emailVerified": true,
+      "firstName": "Vera",
+      "lastName": "Viewer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__PASSWORD__",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "operations-console": [
+          "console-viewer"
+        ]
+      }
+    },
+    {
+      "username": "otto",
+      "enabled": true,
+      "email": "otto@example.invalid",
+      "emailVerified": true,
+      "firstName": "Otto",
+      "lastName": "Operator",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__PASSWORD__",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "operations-console": [
+          "console-operator",
+          "console-viewer"
+        ]
+      }
+    },
+    {
+      "username": "dana",
+      "enabled": true,
+      "email": "dana@example.invalid",
+      "emailVerified": true,
+      "firstName": "Dana",
+      "lastName": "Developer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__PASSWORD__",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "operations-console": [
+          "console-developer"
+        ]
+      }
+    },
+    {
+      "username": "nora",
+      "enabled": true,
+      "email": "nora@example.invalid",
+      "emailVerified": true,
+      "firstName": "Nora",
+      "lastName": "Norole",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__PASSWORD__",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

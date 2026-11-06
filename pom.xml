@@ -17,6 +17,13 @@
         <quarkus.platform.version>3.40.1.1</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
+        <!-- Front end: Node is downloaded from nodejs.org and checked against a pinned SHA-256
+             before frontend-maven-plugin installs it from the verified local copy. -->
+        <node.version>v24.22.2</node.version>
+        <node.mirror>${project.build.directory}/node-mirror</node.mirror>
+        <frontend-plugin.version>2.0.2</frontend-plugin.version>
+        <download-plugin.version>2.1.0</download-plugin.version>
+        <webui.dir>${project.basedir}/src/main/webui</webui.dir>
     </properties>
 
     <dependencyManagement>
@@ -60,11 +67,47 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-oidc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-validator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-logging-json</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-opentelemetry</artifactId>
+        </dependency>
         
         
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-oidc-server</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-security-oidc</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-security</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -86,8 +129,62 @@
                 <filtering>true</filtering>
                 <includes><include>META-INF/box1-build.properties</include></includes>
             </resource>
+            <resource>
+                <directory>${project.build.directory}/webui-dist</directory>
+                <targetPath>META-INF/resources</targetPath>
+                <filtering>false</filtering>
+            </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>io.github.download-maven-plugin</groupId>
+                <artifactId>download-maven-plugin</artifactId>
+                <version>${download-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>fetch-verified-node</id>
+                        <phase>initialize</phase>
+                        <goals><goal>wget</goal></goals>
+                        <configuration>
+                            <uri>https://nodejs.org/dist/${node.version}/node-${node.version}-${node.platform}.tar.gz</uri>
+                            <outputDirectory>${node.mirror}/${node.version}</outputDirectory>
+                            <outputFileName>node-${node.version}-${node.platform}.tar.gz</outputFileName>
+                            <sha256>${node.sha256}</sha256>
+                            <unpack>false</unpack>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>${frontend-plugin.version}</version>
+                <configuration>
+                    <workingDirectory>${webui.dir}</workingDirectory>
+                    <installDirectory>${project.build.directory}/node</installDirectory>
+                    <nodeVersion>${node.version}</nodeVersion>
+                    <nodeDownloadRoot>file://${node.mirror}/</nodeDownloadRoot>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install-node</id>
+                        <phase>initialize</phase>
+                        <goals><goal>install-node-and-npm</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>npm-ci</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>npm</goal></goals>
+                        <configuration><arguments>ci --no-audit --no-fund</arguments></configuration>
+                    </execution>
+                    <execution>
+                        <id>npm-build</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>npm</goal></goals>
+                        <configuration><arguments>run build</arguments></configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>${quarkus.platform.group-id}</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>
@@ -181,6 +278,22 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>node-linux-x64</id>
+            <activation><os><family>unix</family><name>linux</name><arch>amd64</arch></os></activation>
+            <properties>
+                <node.platform>linux-x64</node.platform>
+                <node.sha256>361718c444e49af2ca5a110c83ba6a8901143f23ab285ebbef0341f391f482a9</node.sha256>
+            </properties>
+        </profile>
+        <profile>
+            <id>node-darwin-arm64</id>
+            <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+            <properties>
+                <node.platform>darwin-arm64</node.platform>
+                <node.sha256>aa9549349e47dffaa42dcf95d6e06ade8c4bdafc980979883b88767670df385a</node.sha256>
+            </properties>
+        </profile>
         <profile>
             <id>manual-build-git-ref</id>
             <activation><property><name>env.SOURCE_REVISION</name></property></activation>

@@ -1,6 +1,9 @@
 site_name: operations-console
-site_description: "Single Pane of Glass"
+site_description: "box1 Operations console"
 nav:
   - Home: index.md
+  - Architecture: architecture.md
+  - Runbook: runbook.md
+  - Demo walkthrough: demo-walkthrough.md
 plugins:
   - techdocs-core
