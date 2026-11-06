@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Firefox only: Chrome and its extension are not used for box1 browser testing.
 export default defineConfig({
-  testDir: './tests',
+  // LIVE=1 runs the read-only checks in ./live against the real Route (CONSOLE_URL); otherwise the local suite.
+  testDir: process.env.LIVE ? './live' : './tests',
   timeout: 90_000,
   fullyParallel: false,
   workers: 1,

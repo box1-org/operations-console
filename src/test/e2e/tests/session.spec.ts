@@ -43,6 +43,9 @@ test('logout ends the session', async ({ page }) => {
   const r = await page.request.get('/api/v1/me');
   expect(r.status()).toBe(401);
   expect((await r.json()).code).toBe('SESSION_REQUIRED');
+  // The Keycloak SSO session ended too: a revisit shows the login form (found missing live on RH-SSO 7.6).
+  await page.goto('/');
+  await expect(page.locator('#kc-login')).toBeVisible();
 });
 
 test('anonymous API calls get 401 and do not redirect', async ({ request }) => {
