@@ -2,6 +2,7 @@ package org.box1.console.web;
 
 import java.util.regex.Pattern;
 
+import io.quarkus.vertx.http.runtime.RouteConstants;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
 import jakarta.enterprise.event.Observes;
@@ -24,7 +25,9 @@ public class SpaFallback {
                 immutable && context.response().getStatusCode() == 200 ? "public, max-age=31536000, immutable" : "no-store"));
             context.next();
         });
-        router.get().order(Integer.MIN_VALUE + 100).handler(context -> {
+        // After security and the static/API routes: the login challenge has already seen (and will restore) the real
+        // deep-link path, and only paths nothing else served reach this fallback.
+        router.get().order(RouteConstants.ROUTE_ORDER_AFTER_DEFAULT).handler(context -> {
             String path = context.normalizedPath();
             String accept = context.request().getHeader("Accept");
             if (context.request().method() == HttpMethod.GET && !"/".equals(path) && CLIENT_ROUTE.matcher(path).matches()

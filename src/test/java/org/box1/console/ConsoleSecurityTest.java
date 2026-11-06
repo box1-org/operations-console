@@ -57,9 +57,12 @@ class ConsoleSecurityTest {
 
     @Test
     void anonymousPageNavigationRedirectsToKeycloak() {
-        given().redirects().follow(false).accept("text/html").get("/orders/ord_1").then().statusCode(302)
+        String stateCookie = given().redirects().follow(false).accept("text/html").get("/orders/ord_1").then().statusCode(302)
             .header("Location", containsString("/realms/quarkus?response_type=code"))
-            .header("Location", containsString("code_challenge_method=S256"));
+            .header("Location", containsString("code_challenge_method=S256"))
+            .extract().detailedCookies().toString();
+        // The deep link, not the SPA fallback's index.html, is what the login restores afterwards (Phase 4 repair).
+        org.junit.jupiter.api.Assertions.assertFalse(stateCookie.contains("index.html"), stateCookie);
     }
 
     @Test
