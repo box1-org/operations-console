@@ -183,15 +183,168 @@ paths:
     get:
       tags: [console]
       operationId: listScenarios
-      summary: Named demo scenarios from the scenario controller (box1-docs#19), when it exists (console-viewer)
+      summary: Named demo scenarios from the scenario controller (box1-docs#19), with titles and availability (console-viewer)
       responses:
         "200":
-          description: Scenario catalog, or the controller's absence in `sources`
+          description: Scenario catalog, or why the controller could not be read, in `sources`
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ScenarioList" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/scenarios/{name}/start:
+    post:
+      tags: [console]
+      operationId: startScenario
+      summary: Start a named scenario (console-operator; the controller also requires scenario-operator)
+      parameters: [{ $ref: "#/components/parameters/ScenarioName" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartScenario" }
+      responses:
+        "202":
+          description: Run started; follow it with getScenarioRun
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioRun" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/ScenarioConflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/scenarios/{name}/stop:
+    post:
+      tags: [console]
+      operationId: stopScenario
+      summary: Stop a scenario's active run; the controller verifies nothing further and resets (console-operator)
+      parameters: [{ $ref: "#/components/parameters/ScenarioName" }]
+      requestBody: { $ref: "#/components/requestBodies/Empty" }
+      responses:
+        "200":
+          description: The stopped run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/ScenarioConflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/scenarios/{name}/reset:
+    post:
+      tags: [console]
+      operationId: resetScenario
+      summary: Restore a scenario's fixture stock (additive); stops its active run first (console-operator)
+      parameters: [{ $ref: "#/components/parameters/ScenarioName" }]
+      requestBody: { $ref: "#/components/requestBodies/Empty" }
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResetResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/ScenarioConflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/scenario-runs:
+    get:
+      tags: [console]
+      operationId: listScenarioRuns
+      summary: The 20 most recent scenario runs (console-viewer)
+      responses:
+        "200":
+          description: Runs, or why they could not be read, in `sources`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioRunList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/scenario-runs/{scenarioRunId}:
+    get:
+      tags: [console]
+      operationId: getScenarioRun
+      summary: One scenario run with its status, operator step, verification and audit (console-viewer)
+      parameters: [{ $ref: "#/components/parameters/ScenarioRunId" }]
+      responses:
+        "200":
+          description: The run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/scenario-runs/{scenarioRunId}/confirm:
+    post:
+      tags: [console]
+      operationId: confirmScenarioStep
+      summary: Confirm an operator step the controller cannot observe, e.g. crash-armed, crash-observed (console-operator)
+      parameters: [{ $ref: "#/components/parameters/ScenarioRunId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmStep" }
+      responses:
+        "200":
+          description: The run after the confirmation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioRun" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/ScenarioConflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/scenario-audit:
+    get:
+      tags: [console]
+      operationId: listScenarioAudit
+      summary: The 50 most recent scenario audit records (console-viewer)
+      responses:
+        "200":
+          description: Audit records, or why they could not be read, in `sources`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioAuditList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/scenario-fixtures:
+    get:
+      tags: [console]
+      operationId: getScenarioFixtures
+      summary: The Starfleet Feline Supply fixture set the scenarios use (console-viewer)
+      responses:
+        "200":
+          description: Fixture IDs, display names and opening stock
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioFixtures" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/scenario-fixtures/seed:
+    post:
+      tags: [console]
+      operationId: seedScenarioFixtures
+      summary: Create the fixture sites and stock once through the inventory service's API; a second call changes nothing (console-operator)
+      requestBody: { $ref: "#/components/requestBodies/Empty" }
+      responses:
+        "200":
+          description: How many records were created and how many already matched
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeedResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ScenarioConflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 components:
   parameters:
     OrderId:
@@ -199,6 +352,23 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: "^ord_[A-Za-z0-9_-]{1,64}$" }
+    ScenarioName:
+      name: name
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[a-z][a-z0-9-]{1,48}$" }
+    ScenarioRunId:
+      name: scenarioRunId
+      in: path
+      required: true
+      schema: { type: string, pattern: "^scn_[0-9a-f]{20}$" }
+  requestBodies:
+    Empty:
+      required: true
+      description: An empty JSON object; state-changing calls always send a JSON body
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: false }
   responses:
     BadRequest:
       description: Invalid request
@@ -214,6 +384,9 @@ components:
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
     Conflict:
       description: Same idempotency key with a different payload
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    ScenarioConflict:
+      description: The scenario controller refused this now (another run is active, a gate is closed, or the scenario is not yet possible); `detail` says which
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
     Refused:
       description: The authoritative source refused the request; retrying will not help
@@ -256,11 +429,15 @@ components:
       enum: [console-viewer, console-operator, console-developer]
     Me:
       type: object
-      required: [username, roles, environment]
+      required: [username, roles, environment, scenarioRoles]
       properties:
         username: { type: string }
         roles: { type: array, items: { $ref: "#/components/schemas/ConsoleRole" } }
         environment: { type: string, description: "Namespace/environment the console serves, e.g. operations-console-dev" }
+        scenarioRoles:
+          type: array
+          description: The person's roles on the scenario controller, which enforces them itself; empty when the console does not forward tokens to it
+          items: { type: string, enum: [scenario-viewer, scenario-operator] }
     OrderState:
       type: string
       enum: [SUBMITTED, RESERVED, FULFILLMENT_REQUESTED, SHIPPED, COMPLETED, REJECTED, EXCEPTION, CANCELLED]
@@ -471,10 +648,19 @@ components:
         sources: { $ref: "#/components/schemas/Sources" }
     Scenario:
       type: object
-      required: [name]
+      required: [name, operatorSteps]
       properties:
-        name: { type: string }
+        name: { type: string, description: "Plain ID, e.g. inventory-contention" }
+        title: { type: [string, "null"], description: "Display title, e.g. The Trouble with Tribbles" }
         description: { type: [string, "null"] }
+        mechanism: { type: [string, "null"], description: "SERVICE_API, GUIDED_ERP, VM_LEVEL or PLATFORM" }
+        availability: { type: [string, "null"], description: "AVAILABLE or NOT_YET_POSSIBLE" }
+        notPossibleReason: { type: [string, "null"] }
+        defaultDurationSeconds: { type: [integer, "null"] }
+        maxDurationSeconds: { type: [integer, "null"] }
+        expectedObservation: { type: [string, "null"] }
+        resetAction: { type: [string, "null"] }
+        operatorSteps: { type: array, items: { type: string } }
     ScenarioList:
       type: object
       required: [items, telemetryConsoleUrl, sources]
@@ -482,3 +668,105 @@ components:
         items: { type: array, items: { $ref: "#/components/schemas/Scenario" } }
         telemetryConsoleUrl: { type: string }
         sources: { $ref: "#/components/schemas/Sources" }
+    StartScenario:
+      type: object
+      properties:
+        ttlSeconds: { type: [integer, "null"], minimum: 30, maximum: 3600, description: "Omit for the scenario's default" }
+    ConfirmStep:
+      type: object
+      required: [step]
+      properties:
+        step: { type: string, pattern: "^[a-z][a-z0-9-]{1,40}$", description: "e.g. crash-armed, crash-observed" }
+    ScenarioAudit:
+      type: object
+      properties:
+        seq: { type: [integer, "null"] }
+        scenarioRunId: { type: [string, "null"] }
+        scenario: { type: [string, "null"] }
+        action: { type: [string, "null"] }
+        outcome: { type: [string, "null"] }
+        actor: { type: [string, "null"] }
+        environment: { type: [string, "null"] }
+        detail: { type: [string, "null"] }
+        occurredAt: { type: [string, "null"], format: date-time }
+        stardate: { type: [string, "null"], description: "Display only; occurredAt is authoritative" }
+    ScenarioRun:
+      type: object
+      required: [scenarioRunId]
+      properties:
+        scenarioRunId: { type: string }
+        scenario: { type: [string, "null"] }
+        title: { type: [string, "null"] }
+        mode: { type: [string, "null"] }
+        status: { type: [string, "null"], description: "e.g. RUNNING, AWAITING_OPERATOR, VERIFIED, NOT_VERIFIED, FAILED, STOPPED, EXPIRED" }
+        detail: { type: [string, "null"] }
+        operatorStep: { type: [string, "null"], description: "What the operator must do now, e.g. at the ERP console" }
+        operatorStepId: { type: [string, "null"], description: "A step to confirm with confirmScenarioStep, when the controller cannot observe it" }
+        actor: { type: [string, "null"] }
+        environment: { type: [string, "null"] }
+        ttlSeconds: { type: [integer, "null"] }
+        correlationId: { type: [string, "null"] }
+        startedAt: { type: [string, "null"], format: date-time }
+        startedStardate: { type: [string, "null"] }
+        expiresAt: { type: [string, "null"], format: date-time }
+        endedAt: { type: [string, "null"], format: date-time }
+        resetResult: { type: [string, "null"] }
+        resetDetail: { type: [string, "null"] }
+        resetAt: { type: [string, "null"], format: date-time }
+        audit:
+          type: [array, "null"]
+          items: { $ref: "#/components/schemas/ScenarioAudit" }
+    ScenarioRunList:
+      type: object
+      required: [items, sources]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ScenarioRun" } }
+        sources: { $ref: "#/components/schemas/Sources" }
+    ScenarioAuditList:
+      type: object
+      required: [items, sources]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ScenarioAudit" } }
+        sources: { $ref: "#/components/schemas/Sources" }
+    ScenarioFixtures:
+      type: object
+      required: [sites, customers, products, stock, sources]
+      properties:
+        sites:
+          type: array
+          items:
+            type: object
+            required: [siteId]
+            properties: { siteId: { type: string }, displayName: { type: [string, "null"] }, status: { type: [string, "null"] } }
+        customers:
+          type: array
+          items:
+            type: object
+            required: [customerId]
+            properties: { customerId: { type: string }, displayName: { type: [string, "null"] } }
+        products:
+          type: array
+          items:
+            type: object
+            required: [sku]
+            properties: { sku: { type: string }, displayName: { type: [string, "null"] } }
+        stock:
+          type: array
+          items:
+            type: object
+            required: [siteId, sku]
+            properties: { siteId: { type: string }, sku: { type: string }, openingQuantity: { type: [integer, "null"] } }
+        sources: { $ref: "#/components/schemas/Sources" }
+    SeedResult:
+      type: object
+      required: [created, unchanged]
+      properties:
+        created: { type: integer }
+        unchanged: { type: integer }
+    ResetResult:
+      type: object
+      properties:
+        scenarioRunId: { type: [string, "null"] }
+        resetId: { type: [string, "null"] }
+        resetResult: { type: [string, "null"] }
+        resetDetail: { type: [string, "null"] }

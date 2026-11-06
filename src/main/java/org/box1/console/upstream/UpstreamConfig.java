@@ -31,6 +31,17 @@ public interface UpstreamConfig {
     @WithDefault("8")
     int maxConcurrentPerSource();
 
+    /**
+     * Send the signed-in user's access token to the scenario controller, and only to it. The console's Keycloak client
+     * adds the audience {@code scenario-controller} and the person's scenario roles for exactly this (box1-docs#19).
+     */
+    @WithDefault("false")
+    boolean scenarioControllerForwardToken();
+
+    /** Seed, stop and reset wait for the controller's work (a reset waits for its orders to be decided). */
+    @WithDefault("45s")
+    Duration scenarioActionTimeout();
+
     default Optional<String> url(Source source) {
         Optional<String> url = switch (source) {
             case ORDER_SERVICE -> orderServiceUrl();

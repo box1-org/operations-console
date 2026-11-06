@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpTimeoutException;
+import java.time.Duration;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Optional;
@@ -14,6 +15,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
@@ -54,16 +56,22 @@ public class Upstreams {
     }
 
     public <T> UpstreamResponse<T> get(Source source, String pathAndQuery, Optional<String> bearer, TypeReference<T> type) {
-        return call(source, "GET", pathAndQuery, bearer, Map.of(), null, type);
+        return call(source, "GET", pathAndQuery, bearer, Map.of(), null, type, config.readTimeout());
     }
 
     public <T> UpstreamResponse<T> post(Source source, String path, Optional<String> bearer, Map<String, String> headers,
         Object body, TypeReference<T> type) {
-        return call(source, "POST", path, bearer, headers, body, type);
+        return call(source, "POST", path, bearer, headers, body, type, config.readTimeout());
+    }
+
+    /** A POST whose work legitimately takes longer than a read (scenario seed, stop and reset). */
+    public <T> UpstreamResponse<T> post(Source source, String path, Optional<String> bearer, Map<String, String> headers,
+        Object body, TypeReference<T> type, Duration timeout) {
+        return call(source, "POST", path, bearer, headers, body, type, timeout);
     }
 
     <T> UpstreamResponse<T> call(Source source, String method, String pathAndQuery, Optional<String> bearer,
-        Map<String, String> headers, Object body, TypeReference<T> type) {
+        Map<String, String> headers, Object body, TypeReference<T> type, Duration timeout) {
         Optional<String> base = config.url(source);
         if (base.isEmpty()) {
             return record(source, new UpstreamResponse<>(0, null, null,
@@ -77,7 +85,7 @@ public class Upstreams {
         long start = System.nanoTime();
         try {
             HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base.get() + pathAndQuery))
-                .timeout(config.readTimeout()).header("Accept", "application/json");
+                .timeout(timeout).header("Accept", "application/json");
             bearer.ifPresent(token -> request.header("Authorization", "Bearer " + token));
             headers.forEach(request::header);
             otel.getPropagators().getTextMapPropagator().inject(Context.current(), request, HttpRequest.Builder::header);
@@ -94,15 +102,16 @@ public class Upstreams {
             if (status >= 200 && status < 300 && response.body().length > 0) {
                 parsed = json.readValue(response.body(), type);
             }
-            return record(source, new UpstreamResponse<>(status, parsed, response.headers(), statusFor(source, status, latency)));
-        } catch (HttpConnectTimeoutException timeout) {
+            return record(source, new UpstreamResponse<>(status, parsed, response.headers(), statusFor(source, status, latency),
+                problemDetail(status, response.body())));
+        } catch (HttpConnectTimeoutException connectTimeout) {
             long latency = (System.nanoTime() - start) / 1_000_000;
             return record(source, new UpstreamResponse<>(0, null, null, SourceStatus.of(source, SourceStatus.State.UNAVAILABLE,
                 "Could not connect within " + config.connectTimeout().toMillis() + " ms.", latency)));
-        } catch (HttpTimeoutException timeout) {
+        } catch (HttpTimeoutException readTimeout) {
             long latency = (System.nanoTime() - start) / 1_000_000;
             return record(source, new UpstreamResponse<>(0, null, null, SourceStatus.of(source, SourceStatus.State.UNAVAILABLE,
-                "No answer within " + config.readTimeout().toMillis() + " ms.", latency)));
+                "No answer within " + timeout.toMillis() + " ms.", latency)));
         } catch (IOException failure) {
             long latency = (System.nanoTime() - start) / 1_000_000;
             LOG.debugf("Upstream %s failed: %s", source.id(), failure.getClass().getSimpleName());
@@ -118,6 +127,23 @@ public class Upstreams {
                 SourceStatus.of(source, SourceStatus.State.UNAVAILABLE, "Interrupted.", null)));
         } finally {
             bulkhead.release();
+        }
+    }
+
+    /** The {@code detail} of a 4xx problem body, if it is one; at most 300 characters, never the raw body. */
+    private String problemDetail(int status, byte[] body) {
+        if (status < 400 || status >= 500 || body.length == 0 || body.length > 16_384) {
+            return null;
+        }
+        try {
+            JsonNode detail = json.readTree(body).get("detail");
+            if (detail == null || !detail.isTextual() || detail.asText().isBlank()) {
+                return null;
+            }
+            String text = detail.asText().strip();
+            return text.length() > 300 ? text.substring(0, 300) : text;
+        } catch (IOException notJson) {
+            return null;
         }
     }
 

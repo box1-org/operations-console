@@ -15,7 +15,8 @@ final class Contract {
     record Op(String method, String path, String operationId) {
         /** The path with example ids filled in. */
         String concrete() {
-            return path.replace("{orderId}", "ord_test1").replace("{incidentId}", "inc_ord_test1");
+            return path.replace("{orderId}", "ord_test1").replace("{incidentId}", "inc_ord_test1")
+                .replace("{name}", "inventory-contention").replace("{scenarioRunId}", "scn_0123456789abcdef0123");
         }
     }
 

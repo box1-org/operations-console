@@ -44,4 +44,4 @@ Revert the promotion commit in box1-workloads-dev through a PR. That commit chan
 - One replica (session key).
 - Lists scan at most the 200 most recent orders, because order-service offers no server-side filter.
 - Incidents are derived by the console until an incident contract exists (#17).
-- Demo control is read-only until the scenario controller (#19) exists.
+- Demo control drives the scenario controller (#19) with the signed-in person's token. A person needs `console-operator` here **and** `scenario-operator` on the controller to seed, start, stop, reset or confirm; `console-viewer` with `scenario-viewer` can follow runs. "Refused by the scenario controller" means the second role is missing (assign it in Keycloak). If the page says the controller is not configured, check `SCENARIO_CONTROLLER_URL` and `CONSOLE_SCENARIO_FORWARD_TOKEN`. The controller's own runbook covers stuck runs and resets.

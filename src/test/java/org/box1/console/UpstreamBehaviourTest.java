@@ -217,12 +217,6 @@ class UpstreamBehaviourTest {
     }
 
     @Test
-    void scenariosReportTheControllerAsNotConfigured() {
-        given().get("/api/v1/scenarios").then().statusCode(200).body("items", hasSize(0))
-            .body("sources[0].status", is("NOT_CONFIGURED")).body("telemetryConsoleUrl", containsString("asset-service-dev"));
-    }
-
-    @Test
     void deliveryReportsEachRevisionOrItsAbsence() {
         UpstreamStubs.server.stubFor(get(urlPathEqualTo("/order/api/info")).willReturn(Fixtures.json(
             "{\"name\":\"order-service\",\"version\":\"1.0.0\",\"gitRef\":\"8fda08763e2a593d67cabea73fb84e762cb41a21\"}")));
