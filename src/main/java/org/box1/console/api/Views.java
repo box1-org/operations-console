@@ -72,7 +72,13 @@ public final class Views {
     public record Site(String siteId, List<StockLevel> stock) {
     }
 
-    public record SiteList(List<Site> items, String telemetryConsoleUrl, List<SourceStatus> sources) {
+    /** An active asset-service alert (box1-docs#80). */
+    public record Alert(String alertId, String siteId, String assetId, String metricName, String unit, String severity,
+        Double threshold, Double peakValue, Double lastValue, Instant activatedAt, Instant escalatedAt) {
+    }
+
+    /** {@code alerts} is empty, not invented, when asset-service did not answer; {@code sources} says why. */
+    public record SiteList(List<Site> items, List<Alert> alerts, String telemetryConsoleUrl, List<SourceStatus> sources) {
     }
 
     public record ServiceRevision(String service, String gitRef, String version, String commitUrl) {

@@ -40,6 +40,7 @@ import org.box1.console.domain.ErpProgressMapper;
 import org.box1.console.domain.Incidents;
 import org.box1.console.domain.StateLabels;
 import org.box1.console.domain.TimelineText;
+import org.box1.console.security.AssetToken;
 import org.box1.console.security.ConsoleRoles;
 import org.box1.console.security.ScenarioToken;
 import org.box1.console.security.SessionTokens;
@@ -75,13 +76,14 @@ public class ConsoleResource {
     private final SecurityIdentity identity;
     private final InfoResource selfInfo;
     private final ScenarioToken scenarioToken;
+    private final AssetToken assetToken;
     private final Map<Source, CachedInfo> infoCache = new ConcurrentHashMap<>();
 
     record CachedInfo(Instant at, UpstreamResponse<UpInfo> response) {
     }
 
     public ConsoleResource(ConsoleReads reads, Upstreams upstreams, UpstreamConfig upstreamConfig, Fanout fanout,
-        SecurityIdentity identity, InfoResource selfInfo, ScenarioToken scenarioToken) {
+        SecurityIdentity identity, InfoResource selfInfo, ScenarioToken scenarioToken, AssetToken assetToken) {
         this.reads = reads;
         this.upstreams = upstreams;
         this.upstreamConfig = upstreamConfig;
@@ -89,6 +91,7 @@ public class ConsoleResource {
         this.identity = identity;
         this.selfInfo = selfInfo;
         this.scenarioToken = scenarioToken;
+        this.assetToken = assetToken;
     }
 
     @GET
@@ -233,9 +236,10 @@ public class ConsoleResource {
         Optional<String> token = reads.forwardable(SessionTokens.accessToken(identity));
         long deadline = System.nanoTime() + upstreamConfig.pageBudget().toNanos();
         Future<Listed<UpStockAlias>> stockF = fanout.submit(() -> wrapStock(reads.stock(token)));
-        Future<SourceStatus> telemetryF = fanout.submit(() -> reads.telemetryAccess(token));
+        Optional<String> assetBearer = assetToken.forAssetService();
+        Future<Listed<UpAlertAlias>> alertsF = fanout.submit(() -> wrapAlerts(reads.activeAlerts(assetBearer)));
         Listed<UpStockAlias> stock = Fanout.await(stockF, deadline, new Listed<>(List.of(), false, late(Source.INVENTORY_SERVICE)));
-        SourceStatus telemetry = Fanout.await(telemetryF, deadline, late(Source.ASSET_SERVICE));
+        Listed<UpAlertAlias> alerts = Fanout.await(alertsF, deadline, new Listed<>(List.of(), false, late(Source.ASSET_SERVICE)));
         Map<String, List<Views.StockLevel>> bySite = new LinkedHashMap<>();
         for (UpStockAlias s : stock.items()) {
             bySite.computeIfAbsent(s.value().siteId(), k -> new ArrayList<>()).add(new Views.StockLevel(s.value().sku(),
@@ -247,7 +251,10 @@ public class ConsoleResource {
             stockStatus = SourceStatus.of(Source.INVENTORY_SERVICE, SourceStatus.State.DEGRADED,
                 "Only the first " + stock.items().size() + " stock rows were read.", stockStatus.latencyMs());
         }
-        return new Views.SiteList(sites, reads.settings().telemetryConsoleUrl(), List.of(stockStatus, telemetry));
+        List<Views.Alert> active = alerts.items().stream().map(UpAlertAlias::value).map(a -> new Views.Alert(a.alertId(),
+            a.siteId(), a.assetId(), a.metricName(), a.unit(), a.severity(), a.threshold(), a.peakValue(), a.lastValue(),
+            a.activatedAt(), a.escalatedAt())).toList();
+        return new Views.SiteList(sites, active, reads.settings().telemetryConsoleUrl(), List.of(stockStatus, alerts.status()));
     }
 
     @GET
@@ -283,6 +290,14 @@ public class ConsoleResource {
 
     /** Lets a typed list cross the Fanout without an unchecked generic array. */
     record UpStockAlias(org.box1.console.upstream.Payloads.UpStock value) {
+    }
+
+    /** Lets a typed alert list cross the Fanout without an unchecked generic array. */
+    record UpAlertAlias(org.box1.console.upstream.Payloads.UpAlert value) {
+    }
+
+    private static Listed<UpAlertAlias> wrapAlerts(Listed<org.box1.console.upstream.Payloads.UpAlert> listed) {
+        return new Listed<>(listed.items().stream().map(UpAlertAlias::new).toList(), listed.complete(), listed.status());
     }
 
     private static Listed<UpStockAlias> wrapStock(Listed<org.box1.console.upstream.Payloads.UpStock> listed) {

@@ -38,6 +38,14 @@ public interface UpstreamConfig {
     @WithDefault("false")
     boolean scenarioControllerForwardToken();
 
+    /**
+     * Send the signed-in user's access token to asset-service, for reads only. The console's Keycloak client adds the
+     * audience {@code asset-service} and maps only {@code telemetry-reader}; asset-service accepts the console's tokens
+     * with that role alone (box1-docs#80, interim until the client is confidential, box1-docs#79).
+     */
+    @WithDefault("false")
+    boolean assetServiceForwardToken();
+
     /** Seed, stop and reset wait for the controller's work (a reset waits for its orders to be decided). */
     @WithDefault("45s")
     Duration scenarioActionTimeout();

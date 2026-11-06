@@ -35,6 +35,17 @@ public final class Payloads {
         Instant statusAt) {
     }
 
+    /** An asset-service alert episode (GET /api/v1/alerts); only the fields the console shows. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpAlert(String alertId, String assetId, String siteId, String metricName, String unit, String status,
+        String severity, Double threshold, Double peakValue, Double lastValue, Instant activatedAt, Instant escalatedAt) {
+    }
+
+    /** One page of asset-service results. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpPage<T>(List<T> items, String nextCursor) {
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record UpInfo(String name, String version, String gitRef) {
     }

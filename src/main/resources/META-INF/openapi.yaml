@@ -157,7 +157,7 @@ paths:
     get:
       tags: [console]
       operationId: listSites
-      summary: Stock by site and telemetry status (console-viewer)
+      summary: Stock by site and active asset alerts (console-viewer; alerts need the person's asset-service telemetry-reader role)
       responses:
         "200":
           description: Sites, possibly partial
@@ -625,11 +625,30 @@ components:
       properties:
         siteId: { type: string }
         stock: { type: array, items: { $ref: "#/components/schemas/StockLevel" } }
+    Alert:
+      type: object
+      required: [alertId, siteId, assetId, metricName, severity]
+      properties:
+        alertId: { type: string }
+        siteId: { type: string }
+        assetId: { type: string }
+        metricName: { type: string }
+        unit: { type: [string, "null"] }
+        severity: { type: string }
+        threshold: { type: [number, "null"] }
+        peakValue: { type: [number, "null"] }
+        lastValue: { type: [number, "null"] }
+        activatedAt: { type: [string, "null"], format: date-time }
+        escalatedAt: { type: [string, "null"], format: date-time }
     SiteList:
       type: object
-      required: [items, telemetryConsoleUrl, sources]
+      required: [items, alerts, telemetryConsoleUrl, sources]
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/Site" } }
+        alerts:
+          type: array
+          description: Active asset-service alerts, newest first; empty when asset-service did not answer (see sources)
+          items: { $ref: "#/components/schemas/Alert" }
         telemetryConsoleUrl: { type: string }
         sources: { $ref: "#/components/schemas/Sources" }
     ServiceRevision:
