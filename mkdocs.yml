@@ -1,0 +1,6 @@
+site_name: operations-console
+site_description: "Single Pane of Glass"
+nav:
+  - Home: index.md
+plugins:
+  - techdocs-core
