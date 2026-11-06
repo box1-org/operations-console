@@ -22,6 +22,17 @@ export async function signIn(page: Page, user: string, path = '/') {
   await expect(page.locator('.topbar .user')).toContainText(user);
 }
 
+/** A react-aria Select's trigger: its accessible name is "<value> <label>" (the label is a span, not a <label>). */
+export function selectButton(page: Page, label: string) {
+  return page.getByRole('button', { name: new RegExp(`\\b${label}$`) });
+}
+
+/** Choose an option in a react-aria Select identified by its visible label (Customer, Site, SKU). */
+export async function choose(page: Page, label: string, option: string | RegExp) {
+  await selectButton(page, label).click();
+  await page.getByRole('option', { name: option }).click();
+}
+
 export async function stub(request: APIRequestContext, body: object) {
   const r = await request.post(`${STUBS}/__control`, { data: body });
   expect(r.ok()).toBeTruthy();

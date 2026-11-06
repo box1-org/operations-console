@@ -121,3 +121,18 @@ input, select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--i
   .facts { grid-template-columns: 1fr; }
   .facts dt { margin-top: 0.4rem; }
 }
+
+/* react-aria Select (Place order): same tokens as inputs; 3:1 control border; visible focus. */
+.react-aria-Select { display: flex; flex-direction: column; gap: 0.25rem; font-weight: 600; font-size: 0.9rem; }
+.select-trigger { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; text-align: left;
+  font-weight: 400; background: var(--panel); color: var(--ink); border: 1px solid var(--ink-2); padding: 0.4rem 0.5rem; }
+.select-trigger[data-disabled] { opacity: 0.6; }
+.react-aria-SelectValue[data-placeholder] { color: var(--ink-2); }
+.react-aria-Popover { background: var(--panel); border: 1px solid var(--ink-2); border-radius: 3px; min-width: var(--trigger-width);
+  max-height: 18rem; overflow: auto; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); }
+.react-aria-ListBox { outline: none; padding: 0.25rem 0; }
+.react-aria-ListBoxItem { padding: 0.4rem 0.75rem; cursor: pointer; color: var(--ink); outline: none; }
+.react-aria-ListBoxItem[data-focused], .react-aria-ListBoxItem[data-hovered] { background: var(--waiting-bg); }
+.react-aria-ListBoxItem[data-focus-visible] { outline: 3px solid var(--focus); outline-offset: -3px; }
+.react-aria-ListBoxItem[data-selected] { font-weight: 700; }
+.react-aria-NumberField [slot="description"] { font-weight: 400; color: var(--ink-2); }

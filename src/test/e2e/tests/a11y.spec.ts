@@ -98,3 +98,22 @@ test('mobile width (390 px): no horizontal overflow on any page', async ({ brows
   await shot(page, '11-mobile-orders');
   await context.close();
 });
+
+test('keyboard-only: choose site and SKU from the dropdowns', async ({ page }) => {
+  await signIn(page, 'otto', '/orders/new');
+  await page.waitForLoadState('networkidle');
+  const site = page.getByRole('button', { name: /\bSite$/ });
+  await site.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(site).toContainText(/site_/);
+  await page.keyboard.press('Tab');
+  const sku = page.getByRole('button', { name: /\bSKU$/ });
+  await expect(sku).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await expect(sku).toContainText(/SKU-/);
+  await expect(page.getByText(/available at site_/)).toBeVisible();
+});

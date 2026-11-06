@@ -118,6 +118,25 @@ test('live: keyboard traversal and mobile width', async ({ browser }) => {
   await mobile.close();
 });
 
+test('live: place order lists the inventory service\'s sites and SKUs (read-only, nothing submitted)', async ({ page }) => {
+  await signIn(page, '/orders/new');
+  const inventory = await (await page.request.get(BASE + '/api/v1/sites')).json();
+  const expected = inventory.items.map((s: { siteId: string }) => s.siteId);
+  expect(expected.length).toBeGreaterThan(0);
+  const site = page.getByRole('button', { name: /\bSite$/ });
+  await site.click();
+  const shown = (await page.getByRole('option').allTextContents()).map((t) => t.split(' ')[0]);
+  expect(shown).toEqual(expected);
+  await page.getByRole('option').first().click();
+  const sku = page.getByRole('button', { name: /\bSKU$/ });
+  await sku.click();
+  const skus = (await page.getByRole('option').allTextContents()).map((t) => t.split(':')[0]);
+  expect(skus).toEqual(inventory.items[0].stock.map((s: { sku: string }) => s.sku));
+  await page.keyboard.press('Escape');
+  await page.screenshot({ path: `${SHOTS}/live_place_order.png`, fullPage: true });
+  console.log('LIVE place-order sites', shown.join(','), '| first site SKUs', skus.join(','));
+});
+
 test('live: logout ends the session', async ({ page }) => {
   await signIn(page);
   await page.getByRole('link', { name: 'Sign out' }).click();
