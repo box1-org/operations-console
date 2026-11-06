@@ -49,7 +49,7 @@ export function ProblemView({ problem, onRetry }: { problem: Problem; onRetry?: 
 
 export function Forbidden() {
   return (
-    <div className="state state-forbidden" role="alert" data-testid="forbidden">
+    <div className="state state-forbidden" data-testid="forbidden">
       <h2>Not available with your console roles</h2>
       <p>The console backend refused this view for your account. Ask a box1 administrator for the role you need.</p>
     </div>

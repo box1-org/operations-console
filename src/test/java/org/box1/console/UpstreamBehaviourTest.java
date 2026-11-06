@@ -109,7 +109,8 @@ class UpstreamBehaviourTest {
         given().get("/api/v1/orders").then().statusCode(200).body("items", hasSize(0)).body("window.complete", is(false))
             .body("sources[0].status", is("UNAVAILABLE"));
         given().get("/api/v1/overview").then().statusCode(200).body("sources[0].source", is("order-service"))
-            .body("sources[0].status", is("UNAVAILABLE"));
+            .body("sources[0].status", is("UNAVAILABLE")).body("indicators", nullValue()).body("exceptionQueue", hasSize(0));
+        given().get("/api/v1/incidents").then().statusCode(200).body("items", hasSize(0)).body("window.complete", is(false));
     }
 
     @Test
@@ -174,6 +175,34 @@ class UpstreamBehaviourTest {
             .post("/api/v1/orders").then().statusCode(400).body("code", is("INVALID_REQUEST"));
         given().header("X-Box1-Console", "1").contentType("application/json").body(body)
             .post("/api/v1/orders").then().statusCode(400);
+        // A refusal is not an outage: no "retry is safe" (review ARCH-4).
+        UpstreamStubs.server.stubFor(post(urlPathEqualTo("/order/api/v1/orders")).willReturn(aResponse().withStatus(403)));
+        given().header("X-Box1-Console", "1").header("Idempotency-Key", "k").contentType("application/json").body(body)
+            .post("/api/v1/orders").then().statusCode(502).body("code", is("UPSTREAM_REFUSED"));
+    }
+
+    @Test
+    void evidenceForAnOrderWithoutAnIncidentClaimsNeitherKindNorResolution() {
+        Fixtures.stubOrder(UpstreamStubs.server, "ord_q1", "SUBMITTED", RECENT);
+        given().get("/api/v1/incidents/inc_ord_q1/evidence").then().statusCode(200)
+            .body("incident.kind", is("NONE")).body("incident.active", is(false))
+            .body("incident.title", containsString("No active incident"));
+        given().get("/api/v1/incidents/inc_other/evidence").then().statusCode(404);
+    }
+
+    @Test
+    void exceptionOrdersStillShowTheirErpDetail() {
+        Fixtures.stubOrder(UpstreamStubs.server, "ord_e1", "EXCEPTION", RECENT);
+        adapter("e1", "UPLOADED", "ACKNOWLEDGED", "REJECTED");
+        given().get("/api/v1/orders/ord_e1/summary").then().statusCode(200).body("erp.stage", is("REJECTED"));
+    }
+
+    @Test
+    void anUnusableNextLinkMarksTheWindowIncompleteInsteadOfFailing() {
+        UpstreamStubs.server.stubFor(get(urlPathEqualTo("/order/api/v1/orders")).willReturn(Fixtures.json(
+            "[" + Fixtures.order("ord_l1", "SHIPPED", RECENT) + "]").withHeader("Link", "</api/v1/orders?cursor=a b#x>; title=\"x\"; rel=\"next\"")));
+        given().get("/api/v1/orders").then().statusCode(200).body("items", hasSize(1)).body("window.complete", is(false));
+        given().get("/api/v1/overview").then().statusCode(200).body("indicators.windowComplete", is(false));
     }
 
     @Test
@@ -184,7 +213,7 @@ class UpstreamBehaviourTest {
         given().get("/api/v1/sites").then().statusCode(200).body("items[0].siteId", is("site_east"))
             .body("items[0].stock[0].available", is(8))
             .body("sources.find { it.source == 'asset-service' }.status", is("NOT_AUTHORIZED"))
-            .body("sources.find { it.source == 'asset-service' }.detail", containsString("azp=asset-service"));
+            .body("sources.find { it.source == 'asset-service' }.detail", containsString("its own client"));
     }
 
     @Test

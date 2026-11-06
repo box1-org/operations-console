@@ -27,7 +27,8 @@ import org.box1.console.upstream.Upstreams;
 /** Typed reads of each upstream's published API. Bounded: at most {@code maxPages} pages per list. */
 @ApplicationScoped
 public class ConsoleReads {
-    private static final Pattern NEXT = Pattern.compile("<([^>]*)>\\s*;\\s*rel=\"?next\"?");
+    private static final Pattern LINK = Pattern.compile("<([^>]*)>([^,]*)");
+    private static final Pattern REL_NEXT = Pattern.compile(";\\s*rel\\s*=\\s*\"?([^\";]*)\"?");
     private static final Pattern SAFE_ID = Pattern.compile("^(ord|res|ful)_[A-Za-z0-9_-]{1,64}$");
     private static final TypeReference<List<UpOrder>> ORDERS = new TypeReference<>() { };
     private static final TypeReference<UpOrder> ORDER = new TypeReference<>() { };
@@ -65,6 +66,14 @@ public class ConsoleReads {
         String telemetryConsoleUrl();
 
         Optional<String> publicOrigin();
+
+        /**
+         * Whether the signed-in user's access token is forwarded to upstreams. Off by default (security review SEC-1,
+         * SEC-3): the public client carries no extra audiences, and every upstream the console reads accepts anonymous
+         * reads today. Turning it on needs a client whose tokens are meant for those services (user decision O-9).
+         */
+        @WithDefault("false")
+        boolean forwardUserToken();
     }
 
     public Settings settings() {
@@ -72,6 +81,20 @@ public class ConsoleReads {
     }
 
     public record Listed<T>(List<T> items, boolean complete, SourceStatus status) {
+    }
+
+    /** Outcome of reading a Link header: no next page, a usable next query, or a next link that could not be used. */
+    record Next(boolean present, Optional<String> query) {
+    }
+
+    private volatile CachedProbe telemetryProbe;
+
+    private record CachedProbe(java.time.Instant at, SourceStatus status) {
+    }
+
+    /** The token to forward to an upstream that accepts one, per {@link Settings#forwardUserToken()}. */
+    public Optional<String> forwardable(Optional<String> userToken) {
+        return settings.forwardUserToken() ? userToken : Optional.empty();
     }
 
     public Listed<UpOrder> recentOrders() {
@@ -114,14 +137,24 @@ public class ConsoleReads {
         return new Listed<>(all, complete, status);
     }
 
-    /** Probe whether asset-service accepts the console's token (it requires azp=asset-service; gap G-2). */
+    /**
+     * Whether asset-service answers the console (it accepts only tokens issued to its own client; gap G-2). The result
+     * is cached for a minute so a known refusal does not repeat on every page load (review OPS-6).
+     */
     public SourceStatus telemetryAccess(Optional<String> token) {
+        CachedProbe cached = telemetryProbe;
+        if (cached != null && cached.at().plusSeconds(60).isAfter(java.time.Instant.now())) {
+            return cached.status();
+        }
         UpstreamResponse<Object> r = upstreams.get(Source.ASSET_SERVICE, "/api/v1/alerts?status=ACTIVE&limit=1", token, ANY);
         SourceStatus s = r.sourceStatus();
         if (s.status() == SourceStatus.State.NOT_AUTHORIZED) {
-            return SourceStatus.of(Source.ASSET_SERVICE, s.status(),
-                "asset-service accepts only tokens issued to its own client (azp=asset-service), so it refuses the "
-                    + "console's token. Use the telemetry console instead.", s.latencyMs());
+            s = SourceStatus.of(Source.ASSET_SERVICE, s.status(),
+                "asset-service accepts only tokens issued to its own client, so it does not answer the console. "
+                    + "Use the telemetry console instead.", s.latencyMs());
+        }
+        if (s.status() == SourceStatus.State.OK || s.status() == SourceStatus.State.NOT_AUTHORIZED) {
+            telemetryProbe = new CachedProbe(java.time.Instant.now(), s);
         }
         return s;
     }
@@ -153,27 +186,43 @@ public class ConsoleReads {
                 return new Listed<>(all, false, degraded(status));
             }
             all.addAll(r.body());
-            next = nextQuery(r).map(q -> base + "?" + q).orElse(null);
+            Next n = nextQuery(r);
+            if (n.present() && n.query().isEmpty()) {
+                return new Listed<>(all, false, status);
+            }
+            next = n.query().map(q -> base + "?" + q).orElse(null);
         }
         return new Listed<>(all, next == null, status);
     }
 
-    /** Reuses only the query string of a Link rel=next, so an upstream can never redirect the console elsewhere. */
-    static Optional<String> nextQuery(UpstreamResponse<?> response) {
+    /**
+     * Reuses only the query string of a Link rel=next, so an upstream can never redirect the console elsewhere. A next
+     * link that exists but cannot be used marks the list incomplete rather than complete (review ARCH-9).
+     */
+    static Next nextQuery(UpstreamResponse<?> response) {
         if (response.headers() == null) {
-            return Optional.empty();
+            return new Next(false, Optional.empty());
         }
-        for (String link : response.headers().allValues("Link")) {
-            Matcher m = NEXT.matcher(link);
-            if (m.find()) {
-                String target = m.group(1);
-                int q = target.indexOf('?');
-                if (q >= 0 && q < target.length() - 1) {
-                    return Optional.of(target.substring(q + 1));
+        for (String header : response.headers().allValues("Link")) {
+            Matcher link = LINK.matcher(header);
+            while (link.find()) {
+                Matcher rel = REL_NEXT.matcher(link.group(2));
+                boolean isNext = false;
+                while (rel.find()) {
+                    for (String value : rel.group(1).trim().split("\\s+")) {
+                        isNext |= "next".equalsIgnoreCase(value);
+                    }
+                }
+                if (isNext) {
+                    String target = link.group(1);
+                    int q = target.indexOf('?');
+                    String query = q >= 0 && q < target.length() - 1 ? target.substring(q + 1) : null;
+                    boolean usable = query != null && query.matches("[A-Za-z0-9._~%&=+/-]+");
+                    return new Next(true, usable ? Optional.of(query) : Optional.empty());
                 }
             }
         }
-        return Optional.empty();
+        return new Next(false, Optional.empty());
     }
 
     private static SourceStatus degraded(SourceStatus failed) {

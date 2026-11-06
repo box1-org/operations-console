@@ -7,10 +7,10 @@ browser ──https──▶ Route (edge TLS) ──▶ operations-console pod
                                           ├─ static React app (META-INF/resources)
                                           └─ console backend /api/v1/*  ── session cookie (encrypted tokens)
                                                  │  in-cluster http, 1 s connect / 2.5 s read, 3 s page budget
-                                                 ├─▶ order-service        (no token: the service has no auth, box1-docs#40)
-                                                 ├─▶ inventory-service    (user access token, aud inventory-service)
-                                                 ├─▶ fulfillment-adapter  (user access token, aud fulfillment-adapter)
-                                                 └─▶ asset-service        (user access token; refused, see gaps)
+                                                 ├─▶ order-service        (no token; see box1-docs#40)
+                                                 ├─▶ inventory-service    (no token while its reads are open)
+                                                 ├─▶ fulfillment-adapter  (no token while its reads are open)
+                                                 └─▶ asset-service        (no token; refused, see gaps)
 browser ──https──▶ Keycloak (login only)
 ```
 
@@ -30,7 +30,9 @@ browser ──https──▶ Keycloak (login only)
   - `X-Box1-Console: 1`, a header CORS never allows;
   - a JSON body;
   - an `Origin`, when present, equal to `CONSOLE_PUBLIC_ORIGIN`.
-- **Logout.** `/logout` ends the Keycloak session and the cookie, then shows `/signed-out.html`.
+- **Logout.** `/logout` ends the Keycloak session and the cookie, then shows `/signed-out.html`. Logout is a GET. A page on a sibling `*.box1.org` site could therefore sign a user out, which is a nuisance only and accepted.
+- **Content Security Policy.** `default-src 'self'`, with no inline script. `style-src` additionally allows exactly one stylesheet by hash: react-aria-components' `react-aria-pressable-style`, a `touch-action` rule. The Firefox e2e fails on any CSP violation, so a dependency update that changes the hash is caught.
+- **Token forwarding.** The user's access token stays in the session and is **not forwarded** to any upstream (`CONSOLE_FORWARD_USER_TOKEN=false`). The client is public, so any realm user can hold its tokens. It must therefore carry no other service's audience, and the upstreams' reads are open today. Forwarding needs a client whose tokens are meant for those services, which is a user decision.
 - **Session key.** Without `CONSOLE_SESSION_KEY`, the key is generated per process. Restarts sign users out (observed locally: 200 before, 401 after), and only one replica works. A Secret-backed key is a new secret and needs approval.
 
 ## Roles
@@ -52,10 +54,13 @@ Client roles `console-viewer`, `console-operator` and `console-developer` live o
 | Upstream | Calls | Token |
 |---|---|---|
 | order-service | list (2 pages of 100, newest first), get, timeline, create (pass-through with `Idempotency-Key`, `X-Consumer-Id: operations-console`) | none |
-| inventory-service | reservation by id, stock list | user access token (aud via the console client's mapper) |
-| fulfillment-adapter | `GET /api/fulfillments/{id}` | user access token |
-| asset-service | `GET /api/v1/alerts` (access probe) | user access token |
+| inventory-service | reservation by id, stock list | none (forwarding off) |
+| fulfillment-adapter | `GET /api/fulfillments/{id}` | none (forwarding off) |
+| asset-service | `GET /api/v1/alerts` (access probe, cached 60 s) | none |
 | all | `/api/info` (revisions, cached 60 s) | none |
+
+- **Create semantics.** A create that times out or meets a 5xx returns 503: the order may or may not exist. The page then locks the form to the same values and key, and keeps them in the tab's `sessionStorage` (never a token), so any retry replays rather than duplicates. An upstream 4xx returns 502 `UPSTREAM_REFUSED`, because retrying will not help.
+- **Order service as the only source.** When order-service fails, the overview reports its indicators as absent (null), not zero. Order detail returns 503 naming the source.
 
 - Upstream calls have no retries. At most 8 are in flight per upstream, and excess calls fail fast as `DEGRADED`.
 - Each call carries a W3C `traceparent`. The browser starts a trace per request and the backend continues it. Export is off until a collector exists (box1-docs#22).
@@ -80,9 +85,9 @@ The order-service state label is always shown. When the fulfillment adapter answ
 ## Known gaps (other services)
 
 - **G-1:** no published API links an order to its fulfillment request. `CONSOLE_FULFILLMENT_LINK=derived` relies on order-service's internal `ful_<id>` convention. The permanent fix is exposing `fulfillmentRequestId` on the order API.
-- **G-2:** asset-service accepts only tokens issued to its own client (`azp=asset-service`), so it refuses the console's token. Telemetry shows "refused the console" and links to the asset telemetry console.
+- **G-2:** asset-service accepts only tokens issued to its own client, so it does not answer the console. Telemetry shows "refused the console" and links to the asset telemetry console.
 - **G-3:** the deployed fulfillment adapter has SFTP disabled, so no ERP can hold a request on the cluster yet.
-- **Order service without auth (#40):** the console enforces its own roles, but order-service's own Route remains open. The console adds no exposure.
+- **Order service authentication** is tracked in box1-docs#40. The console enforces its own roles and adds no exposure.
 
 ## Brand
 

@@ -102,14 +102,20 @@ public class ConsoleResource {
     @Path("/overview")
     @RolesAllowed({ConsoleRoles.VIEWER, ConsoleRoles.OPERATOR, ConsoleRoles.DEVELOPER})
     public Views.Overview overview() {
-        Listed<UpOrder> recent = reads.recentOrders();
+        Listed<UpOrder> recent = recentOrders();
         Duration threshold = reads.settings().stuckThreshold();
         Instant now = Instant.now();
+        if (recent.status().status() != SourceStatus.State.OK) {
+            // The order service is the only source of these numbers: report them absent, never zero (review ARCH-1).
+            return new Views.Overview(null, List.of(), (int) threshold.toMinutes(), List.of(recent.status()));
+        }
         Map<String, Integer> byState = new LinkedHashMap<>();
         int stuck = 0;
         int exceptions = 0;
         for (UpOrder o : recent.items()) {
-            byState.merge(o.state(), 1, Integer::sum);
+            if (o.state() != null) {
+                byState.merge(o.state(), 1, Integer::sum);
+            }
             if (Incidents.stuck(o, threshold, now)) {
                 stuck++;
             }
@@ -132,7 +138,7 @@ public class ConsoleResource {
         @QueryParam("sort") @DefaultValue("-createdAt") @Pattern(regexp = "-?(createdAt|updatedAt)") String sort,
         @QueryParam("page") @DefaultValue("0") @Min(0) int page,
         @QueryParam("size") @DefaultValue("20") @Min(1) @Max(100) int size) {
-        Listed<UpOrder> recent = reads.recentOrders();
+        Listed<UpOrder> recent = recentOrders();
         Comparator<UpOrder> order = sort.endsWith("updatedAt")
             ? Comparator.comparing(UpOrder::updatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
             : Comparator.comparing(UpOrder::createdAt, Comparator.nullsLast(Comparator.naturalOrder()));
@@ -161,7 +167,7 @@ public class ConsoleResource {
     @Path("/orders")
     @Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed(ConsoleRoles.OPERATOR)
-    public Response placeOrder(@HeaderParam("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+    public Response placeOrder(@HeaderParam("Idempotency-Key") @NotNull @Pattern(regexp = "^[A-Za-z0-9._:-]{1,255}$") String idempotencyKey,
         @Valid @NotNull PlaceOrder body) {
         String correlationId = UUID.randomUUID().toString();
         UpstreamResponse<UpOrder> r = upstreams.post(Source.ORDER_SERVICE, "/api/v1/orders", Optional.empty(),
@@ -178,8 +184,15 @@ public class ConsoleResource {
             throw new Problem.Failure(Problem.upstream(400, "Order rejected",
                 "The order service rejected the order as invalid.", "UPSTREAM_REJECTED", "order-service"));
         }
-        throw new Problem.Failure(Problem.upstream(503, "Order service unavailable",
-            "The order was not confirmed: " + r.sourceStatus().detail() + " Retrying with the same form is safe.",
+        if (r.status() >= 400 && r.status() < 500) {
+            // A refusal is not an outage: retrying would not help, so do not say it is safe (review ARCH-4).
+            throw new Problem.Failure(Problem.upstream(502, "Order service refused the order",
+                "The order service refused the request (HTTP " + r.status() + "). No order was created.",
+                "UPSTREAM_REFUSED", "order-service"));
+        }
+        throw new Problem.Failure(Problem.upstream(503, "Order service did not confirm the order",
+            "The order may or may not have been created: " + r.sourceStatus().detail()
+                + " Submit the same order again: the same submission key returns the existing order instead of a second one.",
             "UPSTREAM_UNAVAILABLE", "order-service"));
     }
 
@@ -194,16 +207,16 @@ public class ConsoleResource {
     @Path("/incidents")
     @RolesAllowed({ConsoleRoles.VIEWER, ConsoleRoles.OPERATOR, ConsoleRoles.DEVELOPER})
     public Views.IncidentList incidents() {
-        Listed<UpOrder> recent = reads.recentOrders();
+        Listed<UpOrder> recent = recentOrders();
         return new Views.IncidentList(incidentsOf(recent.items(), reads.settings().stuckThreshold(), Instant.now()),
-            List.of(recent.status()));
+            new Views.Window(recent.items().size(), recent.complete()), List.of(recent.status()));
     }
 
     @GET
     @Path("/incidents/{incidentId}/evidence")
     @RolesAllowed({ConsoleRoles.VIEWER, ConsoleRoles.OPERATOR, ConsoleRoles.DEVELOPER})
     public Views.IncidentEvidence evidence(
-        @PathParam("incidentId") @Pattern(regexp = "^inc_ord_[A-Za-z0-9_-]{1,64}$") String incidentId) {
+        @PathParam("incidentId") @Pattern(regexp = "^inc_[A-Za-z0-9_-]{1,80}$") String incidentId) {
         String orderId = Incidents.orderIdOf(incidentId).orElseThrow(() -> new Problem.Failure(
             Problem.of(404, "Not found", "No such incident.", "NOT_FOUND")));
         UpOrder order = requireOrder(orderId);
@@ -216,7 +229,7 @@ public class ConsoleResource {
     @Path("/sites")
     @RolesAllowed({ConsoleRoles.VIEWER, ConsoleRoles.OPERATOR, ConsoleRoles.DEVELOPER})
     public Views.SiteList sites() {
-        Optional<String> token = SessionTokens.accessToken(identity);
+        Optional<String> token = reads.forwardable(SessionTokens.accessToken(identity));
         long deadline = System.nanoTime() + upstreamConfig.pageBudget().toNanos();
         Future<Listed<UpStockAlias>> stockF = fanout.submit(() -> wrapStock(reads.stock(token)));
         Future<SourceStatus> telemetryF = fanout.submit(() -> reads.telemetryAccess(token));
@@ -228,7 +241,12 @@ public class ConsoleResource {
                 s.value().onHand(), s.value().reserved(), s.value().available(), s.value().updatedAt()));
         }
         List<Views.Site> sites = bySite.entrySet().stream().map(e -> new Views.Site(e.getKey(), e.getValue())).toList();
-        return new Views.SiteList(sites, reads.settings().telemetryConsoleUrl(), List.of(stock.status(), telemetry));
+        SourceStatus stockStatus = stock.status();
+        if (!stock.complete() && stockStatus.status() == SourceStatus.State.OK) {
+            stockStatus = SourceStatus.of(Source.INVENTORY_SERVICE, SourceStatus.State.DEGRADED,
+                "Only the first " + stock.items().size() + " stock rows were read.", stockStatus.latencyMs());
+        }
+        return new Views.SiteList(sites, reads.settings().telemetryConsoleUrl(), List.of(stockStatus, telemetry));
     }
 
     @GET
@@ -263,13 +281,20 @@ public class ConsoleResource {
                 SourceStatus.State.NOT_CONFIGURED, "The scenario controller (box1-docs#19) is not deployed.", null)));
         }
         UpstreamResponse<List<UpScenario>> r = upstreams.get(Source.SCENARIO_CONTROLLER, "/internal/v1/scenarios",
-            SessionTokens.accessToken(identity), SCENARIOS);
+            reads.forwardable(SessionTokens.accessToken(identity)), SCENARIOS);
         List<Views.Scenario> items = r.ok()
             ? r.body().stream().map(s -> new Views.Scenario(s.name(), s.description())).toList() : List.of();
         return new Views.ScenarioList(items, telemetry, List.of(r.sourceStatus()));
     }
 
     // ---- helpers ----
+
+    /** The recent-orders window, bounded by the page budget like every other read (review OPS-5). */
+    private Listed<UpOrder> recentOrders() {
+        long deadline = System.nanoTime() + upstreamConfig.pageBudget().toNanos();
+        return Fanout.await(fanout.submit(reads::recentOrders), deadline,
+            new Listed<>(List.of(), false, late(Source.ORDER_SERVICE)));
+    }
 
     /** Lets a typed list cross the Fanout without an unchecked generic array. */
     record UpStockAlias(org.box1.console.upstream.Payloads.UpStock value) {
@@ -293,7 +318,7 @@ public class ConsoleResource {
     }
 
     private Views.OrderSummary summarize(String orderId, UpOrder order) {
-        Optional<String> token = SessionTokens.accessToken(identity);
+        Optional<String> token = reads.forwardable(SessionTokens.accessToken(identity));
         long deadline = System.nanoTime() + upstreamConfig.pageBudget().toNanos();
         String linkMode = reads.fulfillmentRequestIdFor(orderId).isPresent() ? "derived" : "none";
 
@@ -354,7 +379,7 @@ public class ConsoleResource {
             url != null, url, url == null ? "The order service did not report its revision." : null));
 
         List<Views.TimelineEntry> entries = timeline.items().stream()
-            .sorted(Comparator.comparingLong(UpTimelineEntry::sequence))
+            .filter(e -> e.sequence() != null).sorted(Comparator.comparing(UpTimelineEntry::sequence))
             .map(e -> new Views.TimelineEntry(e.sequence(), e.kind(), TimelineText.describe(e), e.reasonCode(), e.fromState(),
                 e.toState(), e.occurredAt(), e.eventId(), e.eventType(), e.causationId(), e.correlationId(), e.traceId()))
             .toList();
@@ -384,7 +409,7 @@ public class ConsoleResource {
 
     static Views.Order view(UpOrder o) {
         return new Views.Order(o.orderId(), o.state(), StateLabels.label(o.state()), o.statusReason(), o.customerId(), o.sku(),
-            o.quantity() == null ? 0 : o.quantity(), o.siteId(), o.reservationId(), o.createdAt(), o.updatedAt(),
+            o.quantity(), o.siteId(), o.reservationId(), o.createdAt(), o.updatedAt(),
             o.correlationId(), o.traceId());
     }
 

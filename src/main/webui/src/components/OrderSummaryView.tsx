@@ -28,7 +28,7 @@ export function OrderSummaryView({ summary, headingLevel = 2 }: { summary: Summa
             <dt>State</dt><dd><StateBadge order={order} /> <code className="meta">{order.state}</code></dd>
             {order.statusReason && (<><dt>Reason</dt><dd><code>{order.statusReason}</code></dd></>)}
             <dt>Customer</dt><dd><code>{order.customerId}</code></dd>
-            <dt>Item</dt><dd>{order.quantity} × <code>{order.sku}</code> from <code>{order.siteId}</code></dd>
+            <dt>Item</dt><dd>{order.quantity ?? '?'} × <code>{order.sku ?? '?'}</code> from <code>{order.siteId ?? '?'}</code></dd>
             <dt>Created</dt><dd><Time value={order.createdAt} /></dd>
             <dt>Last change</dt><dd><Time value={order.updatedAt} /></dd>
           </dl>
@@ -77,7 +77,7 @@ export function OrderSummaryView({ summary, headingLevel = 2 }: { summary: Summa
             ))}
           </ol>
         )}
-        {!summary.timelineComplete && <p className="meta">Older entries were not loaded.</p>}
+        {!summary.timelineComplete && <p className="meta">Newer entries were not loaded: the console reads at most 200 timeline entries.</p>}
       </section>
 
       <section className="panel" aria-labelledby="evidence-h">

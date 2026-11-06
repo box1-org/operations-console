@@ -11,8 +11,13 @@
 ## Health and signals
 
 - Probes: `/q/health/started`, `/q/health/ready` and `/q/health/live`. Readiness does **not** depend on upstreams: a down upstream gives partial pages, not an unready console.
-- Metrics: `console_upstream_calls_total{source,outcome}` counts upstream calls by outcome (`OK`, `UNAVAILABLE`, `NOT_AUTHORIZED`, `DEGRADED`, `NOT_CONFIGURED`). A rising `UNAVAILABLE` count for one source matches the "Partial data" banner users see.
-- Logs: JSON with `traceId`. Find a user's request by the trace ID that appears in the order timeline.
+- Metrics:
+  - `console_upstream_calls_total{source,outcome}` counts calls by outcome (`OK`, `UNAVAILABLE`, `NOT_AUTHORIZED`, `DEGRADED`, `NOT_CONFIGURED`). A rising `UNAVAILABLE` count for one source matches the "Partial data" banner users see.
+  - `console_upstream_duration_seconds{source,outcome}` gives upstream latency.
+  - `asset-service` stays `NOT_AUTHORIZED` by design (gap G-2). It is probed at most once a minute.
+- Logs: JSON with `mdc.traceId`.
+  - Each failed upstream call writes one WARN line: `upstream=<source> outcome=<OUTCOME> http=<status> latencyMs=<n>`. It never includes the URL, headers or body.
+  - The browser starts the trace, and the same trace ID is propagated to the upstream services' own logs.
 
 ## Common situations
 
@@ -25,11 +30,14 @@
 | Login loops with 2+ replicas | Per-process session key | Keep `replicas: 1` until a session key exists |
 | 403 `ROLE_REQUIRED` | The user lacks a console role | Assign `console-viewer`/`-operator`/`-developer` in Keycloak |
 | 403 `ORIGIN_MISMATCH` | `CONSOLE_PUBLIC_ORIGIN` does not match the Route | Fix the env value |
-| Keycloak "Invalid parameter: redirect_uri" | The client's redirect URIs do not cover the Route | Fix the KeycloakClient in box1-gitops |
+| Keycloak "Invalid parameter: redirect_uri" | The client's redirect URI is not exactly `<route>/callback` | Fix the KeycloakClient in box1-gitops |
+| Page loads return 500, `/api/v1/*` returns 401, logs show `OidcProviderClientImpl` errors | Keycloak is unreachable (discovery or token endpoint) | Check Keycloak. Readiness stays UP by design: the console cannot help without it, and restarting does not help |
+| One failed login during a rollout | `maxSurge: 1` runs old and new pods briefly, each with its own session key | Sign in again |
+| Sites shows "refused the console" | Gap G-2 | Expected |
 
 ## Rollback
 
-Revert the image digest in `workloads/operations-console/kustomization.yaml` through a PR. The console holds no data, so rollback has no data step. Users sign in again.
+Revert the promotion commit in box1-workloads-dev through a PR. That commit changes both the digest in `kustomization.yaml` and the `box1.org/source-revision` annotation in `deployment.yaml`. The console holds no data, so rollback has no data step. Users sign in again. **Rollback has not been exercised.**
 
 ## Limits
 

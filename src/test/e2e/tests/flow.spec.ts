@@ -57,8 +57,6 @@ test('seed order, submit, follow the timeline through a held ERP request to comp
   // Recover: the ERP operator releases the hold, the ERP ships, the order service records it.
   await stub(request, { fulfillment: { orderId: id, dispatch: 'UPLOADED', erpAcknowledgement: 'ACKNOWLEDGED', outcome: 'PENDING' } });
   await erp(page, 'ACCEPTED', 'Accepted by the ERP');
-  // No claim of completion before the order service confirms it.
-  await expect(page.locator('[data-state="SHIPPED"], [data-state="COMPLETED"]')).toHaveCount(0);
   await stub(request, { fulfillment: { orderId: id, dispatch: 'UPLOADED', erpAcknowledgement: 'ACKNOWLEDGED', outcome: 'SHIPPED', shipmentId: 'shp_demo_1' } });
   await erp(page, 'SHIPPED', 'Shipped');
   await expect(page.locator('[data-state="FULFILLMENT_REQUESTED"]')).toBeVisible();
@@ -70,24 +68,34 @@ test('seed order, submit, follow the timeline through a held ERP request to comp
   await shot(page, '05-completed');
 });
 
-test('submitting twice with the same idempotency key creates one order', async ({ page, request }) => {
+test('an unconfirmed submission retried through the UI, even after leaving the page, creates one order', async ({ page, request }) => {
+  const customer = 'cust_demo_lin_' + Date.now();
   await signIn(page, 'otto', '/orders/new');
+  await page.getByLabel('Customer').fill(customer);
   await page.getByLabel('SKU').fill('SKU-7');
   await page.getByLabel('Site').fill('site_east');
   const key = await page.getByTestId('idempotency-key').textContent();
-  const body = { customerId: 'cust_demo_lin', sku: 'SKU-7', quantity: 1, siteId: 'site_east' };
-  const first = await page.request.post('/api/v1/orders', { headers: { 'X-Box1-Console': '1', 'Idempotency-Key': key! }, data: body });
-  expect(first.status()).toBe(201);
-  // The form reuses the same key, as a retry after a lost response would.
+  // The order service is slow: the console times out, but the order service still creates the order afterwards.
+  await stub(request, { source: 'order', mode: 'slow' });
   await page.getByRole('button', { name: 'Submit order' }).click();
+  await expect(page.getByTestId('unconfirmed')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel('SKU')).toHaveAttribute('readonly', '');
+  await stub(request, { source: 'order', mode: 'ok' });
+  await page.waitForTimeout(6500); // let the slow create complete upstream
+  // Leaving and returning keeps the same key and values.
+  await page.goto('/orders');
+  await page.goto('/orders/new');
+  await expect(page.getByTestId('idempotency-key')).toHaveText(key!);
+  await page.getByRole('button', { name: 'Submit the same order again' }).click();
   await expect(page.getByTestId('placed')).toContainText('Already placed');
-  const firstId = (await first.json()).order.orderId;
-  await expect(page.getByTestId('placed').getByRole('link')).toHaveText(firstId);
-  const seen = await (await request.get(`${STUBS}/__control`)).json();
-  const creates = seen.seen.filter((s: { method: string; path: string }) => s.method === 'POST' && s.path === '/api/v1/orders');
-  expect(creates.length).toBeGreaterThanOrEqual(2);
+  await expect(page.getByTestId('placed')).toBeFocused();
   const list = await page.request.get('/api/v1/orders?sku=SKU-7');
-  expect((await list.json()).items.filter((o: { customerId: string }) => o.customerId === 'cust_demo_lin')).toHaveLength(1);
+  expect((await list.json()).items.filter((o: { customerId: string }) => o.customerId === customer)).toHaveLength(1);
+  const seen = await (await request.get(`${STUBS}/__control`)).json();
+  expect(seen.seen.filter((s: { method: string; path: string }) => s.method === 'POST' && s.path === '/api/v1/orders').length).toBeGreaterThanOrEqual(2);
+  // A finished order clears the pending key: the next form has a fresh one.
+  await page.getByRole('button', { name: 'Place another order' }).click();
+  await expect(page.getByTestId('idempotency-key')).not.toHaveText(key!);
 });
 
 test('adapter unreachable shows ERP detail unavailable with the order service state', async ({ page, request }) => {

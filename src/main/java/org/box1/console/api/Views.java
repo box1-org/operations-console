@@ -15,7 +15,7 @@ public final class Views {
     }
 
     public record Order(String orderId, String state, String stateLabel, String statusReason, String customerId, String sku,
-        int quantity, String siteId, String reservationId, Instant createdAt, Instant updatedAt, String correlationId,
+        Integer quantity, String siteId, String reservationId, Instant createdAt, Instant updatedAt, String correlationId,
         String traceId) {
     }
 
@@ -36,7 +36,7 @@ public final class Views {
         Integer revision, Integer uploads, Integer resends, String shipmentId, Instant statusAt) {
     }
 
-    public record TimelineEntry(long sequence, String kind, String description, String reasonCode, String fromState,
+    public record TimelineEntry(Long sequence, String kind, String description, String reasonCode, String fromState,
         String toState, Instant occurredAt, String eventId, String eventType, String causationId, String correlationId,
         String traceId) {
     }
@@ -59,13 +59,13 @@ public final class Views {
         List<SourceStatus> sources) {
     }
 
-    public record IncidentList(List<Incident> items, List<SourceStatus> sources) {
+    public record IncidentList(List<Incident> items, Window window, List<SourceStatus> sources) {
     }
 
     public record IncidentEvidence(Incident incident, OrderSummary summary, List<SourceStatus> sources) {
     }
 
-    public record StockLevel(String sku, int onHand, int reserved, int available, Instant updatedAt) {
+    public record StockLevel(String sku, Integer onHand, Integer reserved, Integer available, Instant updatedAt) {
     }
 
     public record Site(String siteId, List<StockLevel> stock) {

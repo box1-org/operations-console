@@ -12,7 +12,14 @@ const SessionContext = createContext<Me | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { state, reload } = useResource((signal) => api.GET('/api/v1/me', { signal }), []);
   if (state.kind === 'loading') return <Loading label="Opening your console session" />;
-  if (state.kind === 'error') return <main id="main" className="page"><ProblemView problem={state.problem} onRetry={reload} /></main>;
+  if (state.kind === 'error') {
+    return (
+      <main id="main" className="page">
+        <h1>box1 Operations</h1>
+        <ProblemView problem={state.problem} onRetry={reload} />
+      </main>
+    );
+  }
   return <SessionContext.Provider value={state.data}>{children}</SessionContext.Provider>;
 }
 

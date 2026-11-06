@@ -100,9 +100,13 @@ h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
 
 .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; margin: 0 0 1rem; }
 .filters label, .form .react-aria-TextField, .form .react-aria-NumberField { display: flex; flex-direction: column; gap: 0.25rem; font-weight: 600; font-size: 0.9rem; }
-input, select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); color: var(--ink); max-width: 100%; }
+input, select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--ink-2); border-radius: 3px; background: var(--panel); color: var(--ink); max-width: 100%; }
 .form { display: grid; gap: 0.9rem; max-width: 28rem; }
 .react-aria-FieldError { color: var(--failure-ink); font-weight: 400; }
+.table-wrap { overflow-x: auto; max-width: 100%; }
+.table-wrap .table { min-width: 32rem; }
+.refresh-failed { color: var(--attention-ink); }
+.live-status { margin-top: -0.5rem; }
 .pager { display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; }
 
 .state { padding: 1rem; border: 1px dashed var(--line); border-radius: 4px; margin: 0 0 1rem; background: var(--panel); }
@@ -114,10 +118,6 @@ input, select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--l
 @media (max-width: 40rem) {
   .page { padding: 0.75rem; }
   .user { margin-left: 0; text-align: left; }
-  .table thead { display: none; }
-  .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
-  .table tr { border-bottom: 1px solid var(--line); padding: 0.4rem 0; }
-  .table td { border: 0; padding: 0.15rem 0.6rem; }
   .facts { grid-template-columns: 1fr; }
   .facts dt { margin-top: 0.4rem; }
 }

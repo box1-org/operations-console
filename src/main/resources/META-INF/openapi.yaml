@@ -80,7 +80,7 @@ paths:
           in: header
           required: true
           description: One key per form submission, reused for its retries.
-          schema: { type: string, minLength: 1, maxLength: 255 }
+          schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,255}$" }
       requestBody:
         required: true
         content:
@@ -101,6 +101,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/Refused" }
         "503": { $ref: "#/components/responses/Unavailable" }
   /api/v1/orders/{orderId}/summary:
     get:
@@ -123,7 +124,7 @@ paths:
     get:
       tags: [console]
       operationId: listIncidents
-      summary: Incidents derived from recent orders and fulfillment status (console-viewer)
+      summary: Incidents derived from recent order status (console-viewer)
       responses:
         "200":
           description: Derived incidents, possibly partial
@@ -141,7 +142,7 @@ paths:
         - name: incidentId
           in: path
           required: true
-          schema: { type: string, pattern: "^inc_ord_[A-Za-z0-9_-]{1,64}$" }
+          schema: { type: string, pattern: "^inc_[A-Za-z0-9_-]{1,80}$" }
       responses:
         "200":
           description: Evidence, possibly partial
@@ -214,8 +215,11 @@ components:
     Conflict:
       description: Same idempotency key with a different payload
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Refused:
+      description: The authoritative source refused the request; retrying will not help
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
     Unavailable:
-      description: The authoritative source for this resource did not answer
+      description: The authoritative source for this resource did not answer (for a create, the outcome is unknown)
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
   schemas:
     Problem:
@@ -241,7 +245,7 @@ components:
         status:
           type: string
           enum: [OK, DEGRADED, UNAVAILABLE, NOT_AUTHORIZED, NOT_CONFIGURED]
-        detail: { type: string }
+        detail: { type: [string, "null"] }
         latencyMs: { type: [integer, "null"] }
         observedAt: { type: string, format: date-time }
     Sources:
@@ -262,20 +266,20 @@ components:
       enum: [SUBMITTED, RESERVED, FULFILLMENT_REQUESTED, SHIPPED, COMPLETED, REJECTED, EXCEPTION, CANCELLED]
     Order:
       type: object
-      description: Customer-safe order fields from the order service
+      description: Customer-safe order fields copied from the order service; a field it did not send is null, never guessed
       required: [orderId, state, stateLabel, customerId, sku, quantity, siteId, createdAt, updatedAt]
       properties:
         orderId: { type: string }
         state: { $ref: "#/components/schemas/OrderState" }
         stateLabel: { type: string, description: "Display label; FULFILLMENT_REQUESTED is 'Awaiting ERP acknowledgement'" }
         statusReason: { type: [string, "null"] }
-        customerId: { type: string, description: Opaque synthetic identifier }
-        sku: { type: string }
-        quantity: { type: integer }
-        siteId: { type: string }
+        customerId: { type: [string, "null"], description: Opaque synthetic identifier }
+        sku: { type: [string, "null"] }
+        quantity: { type: [integer, "null"] }
+        siteId: { type: [string, "null"] }
         reservationId: { type: [string, "null"] }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+        createdAt: { type: [string, "null"], format: date-time }
+        updatedAt: { type: [string, "null"], format: date-time }
         correlationId: { type: [string, "null"] }
         traceId: { type: [string, "null"] }
     OrderPage:
@@ -343,9 +347,9 @@ components:
       required: [sequence, kind, reasonCode, occurredAt, description]
       properties:
         sequence: { type: integer }
-        kind: { type: string, enum: [TRANSITION, NOTE] }
+        kind: { type: string, description: "TRANSITION or NOTE, as the order service reports it" }
         description: { type: string, description: Human-readable sentence }
-        reasonCode: { type: string }
+        reasonCode: { type: [string, "null"] }
         fromState: { type: [string, "null"] }
         toState: { type: [string, "null"] }
         occurredAt: { type: string, format: date-time }
@@ -389,9 +393,13 @@ components:
       properties:
         incidentId: { type: string }
         orderId: { type: string }
-        kind: { type: string, enum: [ORDER_EXCEPTION, AWAITING_ERP_TOO_LONG] }
+        kind:
+          type: string
+          description: >-
+            Extensible; clients must tolerate new values. Today ORDER_EXCEPTION, AWAITING_ERP_TOO_LONG, or NONE when the
+            order service reports no incident condition (the console then claims neither a past incident nor its resolution).
         title: { type: string }
-        since: { type: string, format: date-time }
+        since: { type: [string, "null"], format: date-time }
         active:
           type: boolean
           description: False only when the order service now reports the order past the incident; the console never infers resolution
@@ -400,15 +408,23 @@ components:
       type: object
       required: [indicators, exceptionQueue, stuckThresholdMinutes, sources]
       properties:
-        indicators: { $ref: "#/components/schemas/Indicators" }
+        indicators:
+          description: Null when the order service did not answer; never reported as zero
+          oneOf: [{ $ref: "#/components/schemas/Indicators" }, { type: "null" }]
         exceptionQueue: { type: array, items: { $ref: "#/components/schemas/Incident" } }
         stuckThresholdMinutes: { type: integer }
         sources: { $ref: "#/components/schemas/Sources" }
     IncidentList:
       type: object
-      required: [items, sources]
+      required: [items, window, sources]
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/Incident" } }
+        window:
+          type: object
+          required: [scanned, complete]
+          properties:
+            scanned: { type: integer }
+            complete: { type: boolean, description: False when older orders were not scanned }
         sources: { $ref: "#/components/schemas/Sources" }
     IncidentEvidence:
       type: object
@@ -422,9 +438,9 @@ components:
       required: [sku, onHand, reserved, available]
       properties:
         sku: { type: string }
-        onHand: { type: integer }
-        reserved: { type: integer }
-        available: { type: integer }
+        onHand: { type: [integer, "null"] }
+        reserved: { type: [integer, "null"] }
+        available: { type: [integer, "null"] }
         updatedAt: { type: [string, "null"], format: date-time }
     Site:
       type: object

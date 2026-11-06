@@ -25,15 +25,23 @@ function setState(id, to, reasonCode, eventType) {
   addEntry(id, from, to, reasonCode, eventType);
 }
 function send(res, status, body, headers = {}) {
+  if (res.destroyed || res.writableEnded) return;
   res.writeHead(status, { 'Content-Type': status >= 400 ? 'application/problem+json' : 'application/json', ...headers });
   res.end(body === undefined ? '' : JSON.stringify(body));
 }
 const problem = (status, title) => ({ type: 'about:blank', title, status });
 
-async function body(req) { let b = ''; for await (const c of req) b += c; return b ? JSON.parse(b) : {}; }
+async function body(req) { return req.bodyJson; }
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((e) => { console.error('stub request failed:', e.code || e.message); if (!res.headersSent) { try { res.destroy(); } catch {} } });
+});
+
+async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
+  // Read the body before any delay: a slow mode must still complete the work after the caller gave up.
+  const raw = req.method === 'POST' ? await (async () => { let b = ''; for await (const c of req) b += c; return b; })() : '';
+  req.bodyJson = raw ? JSON.parse(raw) : {};
   const [, svc, ...rest] = url.pathname.split('/');
   const path = '/' + rest.join('/');
   if (svc !== '__control') seen.push({ svc, method: req.method, path, auth: Boolean(req.headers.authorization), traceparent: req.headers.traceparent || null });
@@ -91,5 +99,5 @@ const server = http.createServer(async (req, res) => {
   }
   if (svc === 'asset') return send(res, 401, problem(401, 'Unauthorized'));
   send(res, 404, problem(404, 'Not Found'));
-});
+}
 server.listen(port, '127.0.0.1', () => console.log(`run18 stubs on ${port}`));

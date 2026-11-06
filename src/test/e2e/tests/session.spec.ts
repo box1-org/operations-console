@@ -17,8 +17,9 @@ test('tokens never reach page JavaScript or browser storage; cookies are HttpOnl
   }));
   expect(exposed.cookie).not.toMatch(JWT);
   expect(exposed.cookie).not.toContain('q_session');
-  expect(exposed.local).toBe('{}');
-  expect(exposed.session).toBe('{}');
+  // Storage may hold a pending order submission key (never a token): assert that no token is there.
+  expect(exposed.local).not.toMatch(JWT);
+  expect(exposed.session).not.toMatch(JWT);
   const body = await page.content();
   expect(body).not.toMatch(JWT);
   const me = await page.evaluate(async () => (await fetch('/api/v1/me')).text());

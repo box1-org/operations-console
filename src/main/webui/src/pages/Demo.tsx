@@ -10,6 +10,7 @@ export function Demo() {
   const { state, reload } = useResource((signal) => api.GET('/api/v1/scenarios', { signal }), []);
   return (
     <>
+      <title>Demo control · box1 Operations</title>
       <h1>Demo control</h1>
       <p>Environment: <strong>{me.environment}</strong>. Named fault scenarios are started and stopped only by the scenario controller.</p>
       {state.kind === 'loading' && <Loading label="Loading scenarios" />}

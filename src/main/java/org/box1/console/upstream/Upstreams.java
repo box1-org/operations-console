@@ -5,11 +5,13 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpTimeoutException;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -93,6 +95,10 @@ public class Upstreams {
                 parsed = json.readValue(response.body(), type);
             }
             return record(source, new UpstreamResponse<>(status, parsed, response.headers(), statusFor(source, status, latency)));
+        } catch (HttpConnectTimeoutException timeout) {
+            long latency = (System.nanoTime() - start) / 1_000_000;
+            return record(source, new UpstreamResponse<>(0, null, null, SourceStatus.of(source, SourceStatus.State.UNAVAILABLE,
+                "Could not connect within " + config.connectTimeout().toMillis() + " ms.", latency)));
         } catch (HttpTimeoutException timeout) {
             long latency = (System.nanoTime() - start) / 1_000_000;
             return record(source, new UpstreamResponse<>(0, null, null, SourceStatus.of(source, SourceStatus.State.UNAVAILABLE,
@@ -102,6 +108,10 @@ public class Upstreams {
             LOG.debugf("Upstream %s failed: %s", source.id(), failure.getClass().getSimpleName());
             return record(source, new UpstreamResponse<>(0, null, null, SourceStatus.of(source, SourceStatus.State.UNAVAILABLE,
                 "Could not reach the service (" + failure.getClass().getSimpleName() + ").", latency)));
+        } catch (IllegalArgumentException invalid) {
+            // An unusable URI or header (for example an odd Link query from the upstream) degrades the source, never a 500.
+            return record(source, new UpstreamResponse<>(0, null, null, SourceStatus.of(source, SourceStatus.State.UNAVAILABLE,
+                "The request to this service could not be built.", null)));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             return record(source, new UpstreamResponse<>(0, null, null,
@@ -123,8 +133,18 @@ public class Upstreams {
     }
 
     private <T> UpstreamResponse<T> record(Source source, UpstreamResponse<T> response) {
-        metrics.counter("console.upstream.calls", "source", source.id(), "outcome", response.sourceStatus().status().name())
-            .increment();
+        SourceStatus status = response.sourceStatus();
+        String outcome = status.status().name();
+        metrics.counter("console.upstream.calls", "source", source.id(), "outcome", outcome).increment();
+        if (status.latencyMs() != null) {
+            metrics.timer("console.upstream.duration", "source", source.id(), "outcome", outcome)
+                .record(status.latencyMs(), TimeUnit.MILLISECONDS);
+        }
+        if (status.status() != SourceStatus.State.OK && status.status() != SourceStatus.State.NOT_CONFIGURED) {
+            // One line per failed upstream call, carrying the trace ID via MDC; never the URL, headers or body.
+            LOG.warnf("upstream=%s outcome=%s http=%d latencyMs=%s", source.id(), outcome, response.status(),
+                status.latencyMs() == null ? "-" : status.latencyMs().toString());
+        }
         return response;
     }
 }

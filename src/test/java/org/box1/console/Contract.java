@@ -24,7 +24,9 @@ final class Contract {
 
     static JsonNode document() {
         try (InputStream in = Contract.class.getResourceAsStream("/META-INF/openapi.yaml")) {
-            return new ObjectMapper(new YAMLFactory()).readTree(in);
+            // Strict: a duplicated key is an error here, as it is for the front end's type generator.
+            return new ObjectMapper(new YAMLFactory()).enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                .readTree(in);
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }

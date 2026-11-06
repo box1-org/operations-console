@@ -16,7 +16,7 @@ public final class Payloads {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record UpTimelineEntry(long sequence, String kind, String fromState, String toState, String reasonCode,
+    public record UpTimelineEntry(Long sequence, String kind, String fromState, String toState, String reasonCode,
         Instant occurredAt, String eventId, String eventType, String causationId, String correlationId, String traceId) {
     }
 
@@ -25,7 +25,7 @@ public final class Payloads {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record UpStock(String siteId, String sku, int onHand, int reserved, int available, Instant updatedAt) {
+    public record UpStock(String siteId, String sku, Integer onHand, Integer reserved, Integer available, Instant updatedAt) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

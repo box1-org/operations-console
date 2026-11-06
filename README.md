@@ -58,10 +58,11 @@ These settings are deployment environment variables. Defaults are in `applicatio
 | `CONSOLE_SESSION_KEY` | Session-cookie encryption key, from a Secret. **Unset by default:** each pod generates one, so restarts sign users out and only one replica works | unset |
 | `ORDER_SERVICE_URL`, `INVENTORY_SERVICE_URL`, `FULFILLMENT_ADAPTER_URL`, `ASSET_SERVICE_URL`, `SCENARIO_CONTROLLER_URL` | In-cluster upstream base URLs. When one is empty, that source is reported "not connected" | unset |
 | `CONSOLE_FULFILLMENT_LINK` | `derived` uses order-service's internal `ord_x → ful_x` convention to find ERP status; `none` shows "ERP detail unavailable" | `none` |
+| `CONSOLE_FORWARD_USER_TOKEN` | Forward the user's access token to upstreams. Keep `false` with the public client: its tokens are obtainable by any realm user, so it carries no other service's audience | `false` |
 | `CONSOLE_STUCK_THRESHOLD` | Time awaiting ERP acknowledgement before an order becomes an incident | `10m` |
 | `CONSOLE_ENVIRONMENT`, `TELEMETRY_CONSOLE_URL` | Shown in the header, and the link target for telemetry | dev values |
 
-The Golden Path endpoints `/api/greetings`, `/api/info`, `/q/health/*`, `/q/openapi` and `/q/metrics` stay public for the release smoke task. `GREETING_PREFIX` must stay `Hello from box1`.
+The Golden Path endpoints `/api/greetings`, `/api/info`, `/q/health/*`, `/q/openapi` and `/q/metrics` stay public for the release smoke task. Swagger UI needs a console session. `.tekton/release.yaml` adds a read-only `console-smoke` step that checks the Keycloak redirect (client and PKCE), the login page, the API's 401, the CSP and the contract. `GREETING_PREFIX` must stay `Hello from box1`.
 
 ## Documentation
 

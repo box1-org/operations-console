@@ -5,12 +5,18 @@
 set -eu
 : "${RUN_DIR:?set RUN_DIR to a private scratch directory}"
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(cd "$HERE/../../.." && pwd)
-mkdir -p "$RUN_DIR/import"; umask 077
+umask 077
+[ -d "$RUN_DIR" ] || mkdir -p "$RUN_DIR"
+case "$(stat -f %Lp "$RUN_DIR" 2>/dev/null || stat -c %a "$RUN_DIR")" in 700) ;; *) echo "RUN_DIR must be mode 700 (it holds test passwords)" >&2; exit 1;; esac
+mkdir -p "$RUN_DIR/import"
 PASSWORD=$(openssl rand -hex 16); ADMIN=$(openssl rand -hex 16)
 printf '%s' "$PASSWORD" > "$RUN_DIR/user-password"
 sed "s/__PASSWORD__/$PASSWORD/g" "$HERE/keycloak/realm.template.json" > "$RUN_DIR/import/box1-realm.json"
+# Readable by the container user only through the private RUN_DIR (mode 700).
 chmod 644 "$RUN_DIR/import/box1-realm.json"
 podman rm -f run18-keycloak >/dev/null 2>&1 || true
+# A console left on the port would keep the previous Keycloak's keys and mask this run (pilot repair).
+if lsof -nP -iTCP:18080 -sTCP:LISTEN >/dev/null 2>&1; then echo "port 18080 is in use; stop that process first" >&2; exit 1; fi
 podman run -d --name run18-keycloak -p 127.0.0.1:18280:8080 \
   -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD="$ADMIN" \
   -v "$RUN_DIR/import:/opt/keycloak/data/import:ro,Z" quay.io/keycloak/keycloak:26.4 start-dev --import-realm >/dev/null

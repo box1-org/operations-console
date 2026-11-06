@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from 'react-router';
+import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useEffect, useRef } from 'react';
 import { useHasRole, useSession, VIEW_ROLES } from './session';
 
@@ -19,11 +19,11 @@ export function Layout() {
     <div className="shell">
       <a className="skip-link" href="#main">Skip to content</a>
       <header className="topbar">
-        <a className="brand" href="/">
+        <Link className="brand" to="/">
           <img src="/brand/box1-mark.png" alt="" width="32" height="32" />
           <span className="brand-parent">box1</span>{' '}
           <span className="brand-product">Operations</span>
-        </a>
+        </Link>
         <span className="env" title="Environment this console serves">{me.environment}</span>
         <span className="user">
           <span className="sr-only">Signed in as </span>{me.username}

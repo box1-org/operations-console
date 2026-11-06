@@ -5,6 +5,7 @@ import { useResource } from '../api/useResource';
 import { StateBadge, Time } from '../components/Badges';
 import { SourcesBanner } from '../components/Sources';
 import { Empty, Loading, ProblemView } from '../components/States';
+import { TableWrap } from '../components/Live';
 import { useHasRole } from '../session';
 
 const STATES: Schemas['OrderState'][] = ['SUBMITTED', 'RESERVED', 'FULFILLMENT_REQUESTED', 'SHIPPED', 'COMPLETED', 'REJECTED', 'EXCEPTION', 'CANCELLED'];
@@ -21,7 +22,7 @@ export function Orders() {
   const size = 20;
   const { state: res, reload } = useResource(
     (signal) => api.GET('/api/v1/orders', { params: { query: { state, siteId, sku, sort, page, size } }, signal }),
-    [state, siteId, sku, sort, page]);
+    [state, siteId, sku, sort, page], { keepDataOnChange: true });
 
   function update(form: HTMLFormElement) {
     const data = new FormData(form);
@@ -35,6 +36,7 @@ export function Orders() {
 
   return (
     <>
+      <title>Orders · box1 Operations</title>
       <div className="page-head">
         <h1>Orders</h1>
         {canPlace && <Link className="button" to="/orders/new">Place order</Link>}
@@ -67,13 +69,13 @@ export function Orders() {
         return (
           <>
             <SourcesBanner sources={d.sources} />
-            <p className="meta" aria-live="polite">
+            <p className="meta">
               {d.total} matching order(s) among the {d.window.scanned} most recent{d.window.complete ? '' : '; older orders were not searched'}.
             </p>
             {d.items.length === 0 ? (
               unavailable ? null : <Empty title="No orders match">Change the filters, or place an order.</Empty>
             ) : (
-              <table className="table">
+              <TableWrap label="Orders"><table className="table">
                 <caption className="sr-only">Orders, page {d.page + 1} of {pages}</caption>
                 <thead><tr><th scope="col">Order</th><th scope="col">State</th><th scope="col">Item</th><th scope="col">Site</th><th scope="col">Created</th><th scope="col">Last change</th></tr></thead>
                 <tbody>
@@ -81,15 +83,16 @@ export function Orders() {
                     <tr key={o.orderId}>
                       <td><Link to={`/orders/${o.orderId}`}>{o.orderId}</Link></td>
                       <td><StateBadge order={o} /></td>
-                      <td>{o.quantity} × <code>{o.sku}</code></td>
+                      <td>{o.quantity ?? '?'} × <code>{o.sku ?? '?'}</code></td>
                       <td><code>{o.siteId}</code></td>
                       <td><Time value={o.createdAt} /></td>
                       <td><Time value={o.updatedAt} /></td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></TableWrap>
             )}
+            <p className="sr-only" aria-live="polite" aria-atomic="true">{res.refreshing ? 'Loading' : `${d.total} matching orders, page ${d.page + 1} of ${pages}`}</p>
             <nav className="pager" aria-label="Order pages">
               <Button isDisabled={d.page <= 0} onPress={() => { params.set('page', String(d.page - 1)); setParams(params); }}>Previous</Button>
               <span>Page {d.page + 1} of {pages}</span>

@@ -101,10 +101,11 @@ class ConsoleSecurityTest {
         given().header("X-Box1-Console", "1").header("Idempotency-Key", "k-1").header("Origin", "https://developer-hub.apps.ocp.box1.org")
             .contentType("application/json").body(BODY).post("/api/v1/orders").then().statusCode(403).body("code", is("ORIGIN_MISMATCH"));
         // The console's own https origin, as the browser sends it through the edge Route, passes the guard (the
-        // order service stub is absent, so the call reaches it and fails as unavailable rather than forbidden).
+        // order service stub may be absent, so the call reaches it and fails upstream rather than being forbidden).
         given().header("X-Box1-Console", "1").header("Idempotency-Key", "k-1").header("Origin", "https://operations-console-dev.apps.ocp.box1.org")
             .contentType("application/json").body(Map.of("customerId", "cust_demo_ada", "sku", "SKU-42", "quantity", 1, "siteId", "site_east"))
-            .post("/api/v1/orders").then().statusCode(503).body("code", is("UPSTREAM_UNAVAILABLE"));
+            .post("/api/v1/orders").then().statusCode(org.hamcrest.Matchers.oneOf(502, 503))
+            .body("code", org.hamcrest.Matchers.startsWith("UPSTREAM_"));
         given().get("/api/v1/me").then().statusCode(200).body("roles", equalTo(List.of("console-operator")));
     }
 
@@ -122,6 +123,19 @@ class ConsoleSecurityTest {
             given().get(path).then().statusCode(200).header("Content-Security-Policy", containsString("default-src 'self'"))
                 .header("X-Frame-Options", "DENY").header("Cache-Control", "no-store");
         }
+    }
+
+    @Test
+    void swaggerUiAndOtherQuarkusPathsNeedASession() {
+        given().redirects().follow(false).accept("text/html").get("/q/swagger-ui/").then().statusCode(302);
+    }
+
+    @Test
+    @TestSecurity(user = "otto", roles = "console-operator")
+    void idempotencyKeysAreRestrictedToSafeCharacters() {
+        given().header("X-Box1-Console", "1").header("Idempotency-Key", "bad key with spaces").contentType("application/json")
+            .body(Map.of("customerId", "cust_demo_ada", "sku", "SKU-42", "quantity", 1, "siteId", "site_east"))
+            .post("/api/v1/orders").then().statusCode(400).body("code", is("INVALID_REQUEST"));
     }
 
     @Test

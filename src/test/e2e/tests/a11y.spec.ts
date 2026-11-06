@@ -2,7 +2,10 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { signIn, stub, shot } from './helpers';
 
-test('automated accessibility scan (WCAG 2.1 A/AA) on every page and state', async ({ page, request }) => {
+test('automated accessibility scan (WCAG 2.1 A/AA) on every page and state, light and dark; no CSP violations', async ({ page, request }) => {
+  const csp: string[] = [];
+  page.on('console', (m) => { if (/Content-Security-Policy|Content Security Policy/i.test(m.text())) csp.push(m.text()); });
+  page.on('pageerror', (e) => csp.push('pageerror: ' + e.message));
   await signIn(page, 'otto');
   // An exception order, so the incident pages have content.
   const r = await page.request.post('/api/v1/orders', { headers: { 'X-Box1-Console': '1', 'Idempotency-Key': 'a11y-' + Date.now() },
@@ -10,15 +13,36 @@ test('automated accessibility scan (WCAG 2.1 A/AA) on every page and state', asy
   const id = (await r.json()).order.orderId;
   await stub(request, { advance: { orderId: id, to: 'EXCEPTION', reasonCode: 'RESERVATION_EXPIRED', eventType: 'inventory.reservation-expired.v1' } });
   const failures: string[] = [];
-  for (const path of ['/', '/orders', '/orders/new', `/orders/${id}`, '/incidents', `/incidents/inc_${id}`, '/sites', '/delivery', '/demo', '/nope']) {
-    await page.goto(path);
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('main h1')).toBeVisible();
-    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    for (const v of result.violations) failures.push(`${path}: ${v.id} (${v.nodes.length}) ${v.help}`);
-    expect(result.passes.length, `axe ran on ${path}`).toBeGreaterThan(0);
+  const paths = ['/', '/orders', '/orders/new', `/orders/${id}`, '/incidents', `/incidents/inc_${id}`, '/sites', '/delivery', '/demo', '/nope'];
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const path of paths) {
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+      await expect(page.locator('main h1')).toBeVisible();
+      const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+      for (const v of result.violations) failures.push(`${scheme} ${path}: ${v.id} (${v.nodes.length}) ${v.help}`);
+      expect(result.passes.length, `axe ran on ${path}`).toBeGreaterThan(0);
+    }
   }
   expect(failures).toEqual([]);
+  expect(csp).toEqual([]);
+});
+
+test('accessibility scan of the populated delivery table (developer) and at mobile width', async ({ browser }) => {
+  const failures: string[] = [];
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  await signIn(page, 'dana', '/delivery');
+  await expect(page.getByRole('cell', { name: 'order-service' })).toBeVisible();
+  for (const path of ['/delivery', '/', '/orders', '/sites']) {
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    for (const v of result.violations) failures.push(`mobile ${path}: ${v.id} (${v.nodes.length}) ${v.help}`);
+  }
+  expect(failures).toEqual([]);
+  await context.close();
 });
 
 test('keyboard-only traversal: order and incident', async ({ page, request }) => {
@@ -55,7 +79,7 @@ test('keyboard-only traversal: order and incident', async ({ page, request }) =>
   await tabTo(`inc_${id}`);
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Incident evidence' })).toBeVisible();
-  await expect(page.getByTestId('incident-status')).toContainText('Active');
+  await expect(page.getByTestId('incident-status')).toContainText('Active:');
   await shot(page, '10-incident-evidence');
 });
 
@@ -70,6 +94,7 @@ test('mobile width (390 px): no horizontal overflow on any page', async ({ brows
     expect(overflow, path).toBeLessThanOrEqual(0);
   }
   await page.goto('/orders');
+  await expect(page.getByRole('region', { name: 'Orders' })).toBeVisible();
   await shot(page, '11-mobile-orders');
   await context.close();
 });

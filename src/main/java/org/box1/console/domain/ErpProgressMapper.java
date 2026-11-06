@@ -11,7 +11,8 @@ import org.box1.console.upstream.Payloads.UpFulfillment;
  * When the adapter did not answer, the result says so and carries no adapter fields; it is never guessed.
  */
 public final class ErpProgressMapper {
-    static final Set<String> FULFILLMENT_STATES = Set.of("FULFILLMENT_REQUESTED", "SHIPPED", "COMPLETED");
+    /** States in which an ERP request may exist; EXCEPTION included so its adapter detail is shown (review ARCH-3). */
+    static final Set<String> FULFILLMENT_STATES = Set.of("FULFILLMENT_REQUESTED", "SHIPPED", "COMPLETED", "EXCEPTION");
     public static final String UNAVAILABLE_LABEL = "ERP detail unavailable";
 
     private ErpProgressMapper() {

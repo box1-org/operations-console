@@ -61,7 +61,9 @@ public final class Incidents {
                 StateLabels.AWAITING_ERP + " for " + minutes + " min (below the " + threshold.toMinutes()
                     + " min threshold)", order.updatedAt(), true, true);
         }
-        return new Incident(idFor(order.orderId()), order.orderId(), "ORDER_EXCEPTION",
-            "No longer active: the order service reports " + StateLabels.label(order.state()), order.updatedAt(), false, true);
+        // Not an incident now. The console does not know whether one existed before, so it claims neither a kind it
+        // never observed nor a resolution (review ARCH-2).
+        return new Incident(idFor(order.orderId()), order.orderId(), "NONE",
+            "No active incident: the order service reports " + StateLabels.label(order.state()), order.updatedAt(), false, true);
     }
 }

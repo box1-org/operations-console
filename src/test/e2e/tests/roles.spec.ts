@@ -9,11 +9,16 @@ test('a user without console roles sees forbidden states and the backend refuses
   await expect(page.getByRole('navigation', { name: 'Console' }).getByRole('link')).toHaveCount(0);
   await expect(page.getByTestId('forbidden')).toBeVisible();
   await shot(page, '08-forbidden-no-role');
-  for (const path of ['/api/v1/overview', '/api/v1/orders', '/api/v1/sites', '/api/v1/incidents', '/api/v1/delivery']) {
+  for (const path of ['/api/v1/overview', '/api/v1/orders', '/api/v1/orders/ord_x/summary', '/api/v1/incidents',
+    '/api/v1/incidents/inc_ord_x/evidence', '/api/v1/sites', '/api/v1/delivery', '/api/v1/scenarios']) {
     const r = await page.request.get(path);
     expect(r.status(), path).toBe(403);
     expect((await r.json()).code).toBe('ROLE_REQUIRED');
   }
+  const post = await page.request.post('/api/v1/orders', { headers: { 'X-Box1-Console': '1', 'Idempotency-Key': 'nora-1' }, data: ORDER });
+  expect(post.status()).toBe(403);
+  await page.goto('/delivery');
+  await expect(page.getByTestId('forbidden')).toHaveCount(1);
 });
 
 test('a viewer cannot place orders even by calling the API directly', async ({ page }) => {
