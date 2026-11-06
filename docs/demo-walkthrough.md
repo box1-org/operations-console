@@ -19,7 +19,13 @@ The screenshots below are from the local e2e stack (real Keycloak login, stubbed
 
 1. **Sign in.** Opening the console redirects to Keycloak. After login the overview shows indicators and the exception queue.
    ![Overview](screenshots/01-home.png)
-2. **Place an order** (operator). One idempotency key is used per submission, so a retry cannot create a second order.
+2. **Place an order** (operator).
+   - **Site** and **SKU** are dropdowns filled from the inventory service. Each SKU shows its available, on-hand and reserved stock, and choosing a different site resets the SKU.
+   - **Customer** is a dropdown of the demo customers, with an *Other…* option for a typed `cust_…` ID.
+   - A quantity above what is available shows a warning but can still be submitted: inventory decides, and a rejection is a valid demo path.
+   - If the inventory service does not answer, the page says so and falls back to typed site and SKU.
+   - One idempotency key is used per submission, so a retry cannot create a second order.
+   ![Place order dropdowns](screenshots/02a-place-order-dropdowns.png)
    ![Placed](screenshots/02-placed.png)
 3. **Follow it.** The order goes Submitted → Stock reserved → **Awaiting ERP acknowledgement**. The ERP panel refines it: queued, uploaded (with outstanding attempts), accepted. Every timeline entry shows its trace ID, correlation ID and event.
    ![Awaiting ERP](screenshots/03-awaiting-erp.png)

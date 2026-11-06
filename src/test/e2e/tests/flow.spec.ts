@@ -1,11 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { signIn, stub, shot, STUBS } from './helpers';
+import { choose, signIn, stub, shot, STUBS } from './helpers';
 
 async function placeOrder(page: Page): Promise<string> {
   await page.getByRole('link', { name: 'Place order' }).first().click();
-  await page.getByLabel('SKU').fill('SKU-42');
+  await choose(page, 'Site', /^site_east/);
+  await choose(page, 'SKU', /^SKU-42:/);
   await page.getByLabel('Quantity').fill('2');
-  await page.getByLabel('Site').fill('site_east');
   await page.getByRole('button', { name: 'Submit order' }).click();
   await expect(page.getByTestId('placed')).toBeVisible();
   const id = (await page.getByTestId('placed').getByRole('link').textContent())!.trim();
@@ -71,15 +71,17 @@ test('seed order, submit, follow the timeline through a held ERP request to comp
 test('an unconfirmed submission retried through the UI, even after leaving the page, creates one order', async ({ page, request }) => {
   const customer = 'cust_demo_lin_' + Date.now();
   await signIn(page, 'otto', '/orders/new');
-  await page.getByLabel('Customer').fill(customer);
-  await page.getByLabel('SKU').fill('SKU-7');
-  await page.getByLabel('Site').fill('site_east');
+  await choose(page, 'Customer', 'Other…');
+  await page.getByLabel('Customer ID').fill(customer);
+  await choose(page, 'Site', /^site_east/);
+  await choose(page, 'SKU', /^SKU-7:/);
   const key = await page.getByTestId('idempotency-key').textContent();
   // The order service is slow: the console times out, but the order service still creates the order afterwards.
   await stub(request, { source: 'order', mode: 'slow' });
   await page.getByRole('button', { name: 'Submit order' }).click();
   await expect(page.getByTestId('unconfirmed')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByLabel('SKU')).toHaveAttribute('readonly', '');
+  await expect(page.getByRole('button', { name: /\bSKU$/ })).toBeDisabled();
+  await expect(page.getByLabel('Customer ID')).toHaveAttribute('readonly', '');
   await stub(request, { source: 'order', mode: 'ok' });
   await page.waitForTimeout(6500); // let the slow create complete upstream
   // Leaving and returning keeps the same key and values.
@@ -153,4 +155,41 @@ test('each upstream slow or down in turn gives a partial page naming the failed 
   await expect(page.getByTestId('sources-banner').locator('[data-source="asset-service"]')).toContainText('refused the console');
   await expect(page.getByRole('heading', { name: 'site_east' })).toBeVisible();
   await shot(page, '06-sites-partial');
+});
+
+test('place order: site and SKU come from inventory; the SKU list follows the site; over-available warns but submits', async ({ page }) => {
+  await signIn(page, 'otto', '/orders/new');
+  // Sites from the inventory service, not typed.
+  await page.getByRole('button', { name: /\bSite$/ }).click();
+  await expect(page.getByRole('option')).toHaveText([/^site_east \(2 SKUs\)/, /^site_west \(1 SKU\)/]);
+  await page.keyboard.press('Escape');
+  const skuButton = page.getByRole('button', { name: /\bSKU$/ });
+  await expect(skuButton).toBeDisabled();
+  await choose(page, 'Site', /^site_west/);
+  await skuButton.click();
+  await expect(page.getByRole('option')).toHaveText([/^SKU-42: 4 available \(5 on hand, 1 reserved\)/]);
+  await page.getByRole('option', { name: /^SKU-42:/ }).click();
+  await expect(page.getByText('4 available at site_west')).toBeVisible();
+  // Changing the site clears the SKU.
+  await choose(page, 'Site', /^site_east/);
+  await expect(skuButton).toContainText('Choose a SKU');
+  await expect(page.getByRole('button', { name: 'Submit order' })).toBeDisabled();
+  await choose(page, 'SKU', /^SKU-7:/);
+  await page.getByLabel('Quantity').fill('20');
+  await expect(page.getByTestId('over-available')).toContainText('More than the 12 available');
+  await shot(page, '02a-place-order-dropdowns');
+  await page.getByRole('button', { name: 'Submit order' }).click();
+  await expect(page.getByTestId('placed')).toContainText('Order accepted');
+});
+
+test('place order: with inventory down the page names it and falls back to typed site and SKU', async ({ page, request }) => {
+  await stub(request, { source: 'inventory', mode: 'down' });
+  await signIn(page, 'otto', '/orders/new');
+  await expect(page.getByTestId('inventory-fallback')).toContainText('Inventory service');
+  await expect(page.getByTestId('inventory-fallback')).toContainText('Type them instead');
+  await page.getByLabel('Site').fill('site_east');
+  await page.getByLabel('SKU').fill('SKU-42');
+  await page.getByRole('button', { name: 'Submit order' }).click();
+  await expect(page.getByTestId('placed')).toContainText('Order accepted');
+  await stub(request, { source: 'inventory', mode: 'ok' });
 });
