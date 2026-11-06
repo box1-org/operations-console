@@ -213,7 +213,8 @@ class UpstreamBehaviourTest {
         given().get("/api/v1/sites").then().statusCode(200).body("items[0].siteId", is("site_east"))
             .body("items[0].stock[0].available", is(8))
             .body("sources.find { it.source == 'asset-service' }.status", is("NOT_AUTHORIZED"))
-            .body("sources.find { it.source == 'asset-service' }.detail", containsString("its own client"));
+            .body("sources.find { it.source == 'asset-service' }.detail", containsString("telemetry console"))
+            .body("alerts", hasSize(0));
     }
 
     @Test

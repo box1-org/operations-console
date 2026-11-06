@@ -16,10 +16,34 @@ export function Sites() {
       {state.kind === 'ready' && (
         <>
           <SourcesBanner sources={state.data.sources} />
-          <p>
-            Equipment telemetry, load and chaos live in the <a href={state.data.telemetryConsoleUrl}>asset telemetry console</a>{' '}
-            (needs that service's own role).
-          </p>
+          <section className="panel" aria-labelledby="active-alerts">
+            <h2 id="active-alerts">Active equipment alerts</h2>
+            {state.data.alerts.length === 0 ? (
+              <p className="meta">
+                {state.data.sources.some((s) => s.source === 'asset-service' && s.status !== 'OK' && s.status !== 'DEGRADED')
+                  ? 'Alerts could not be read; see the source status above.'
+                  : 'No active alerts.'}
+              </p>
+            ) : (
+              <TableWrap label="Active equipment alerts"><table className="table">
+                <caption className="sr-only">Active equipment alerts, newest first</caption>
+                <thead><tr><th scope="col">Site</th><th scope="col">Asset</th><th scope="col">Metric</th><th scope="col">Severity</th><th scope="col">Last</th><th scope="col">Peak</th><th scope="col">Threshold</th><th scope="col">Since</th></tr></thead>
+                <tbody>
+                  {state.data.alerts.map((a) => (
+                    <tr key={a.alertId}>
+                      <td><code>{a.siteId}</code></td><td><code>{a.assetId}</code></td><td>{a.metricName}</td><td>{a.severity}</td>
+                      <td>{value(a.lastValue, a.unit)}</td><td>{value(a.peakValue, a.unit)}</td><td>{value(a.threshold, a.unit)}</td>
+                      <td><Time value={a.activatedAt} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></TableWrap>
+            )}
+            <p>
+              Readings, load and chaos live in the <a href={state.data.telemetryConsoleUrl}>asset telemetry console</a>{' '}
+              (needs that service's own role).
+            </p>
+          </section>
           {state.data.items.length === 0 ? <Empty title="No stock reported" /> : state.data.items.map((site) => (
             <section className="panel" key={site.siteId} aria-labelledby={`site-${site.siteId}`}>
               <h2 id={`site-${site.siteId}`}><code>{site.siteId}</code></h2>
@@ -38,4 +62,8 @@ export function Sites() {
       )}
     </>
   );
+}
+
+function value(v: number | null | undefined, unit: string | null | undefined) {
+  return v == null ? '—' : `${v}${unit ? ` ${unit}` : ''}`;
 }

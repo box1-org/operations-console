@@ -13,9 +13,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.box1.console.upstream.Payloads.UpAlert;
 import org.box1.console.upstream.Payloads.UpFulfillment;
 import org.box1.console.upstream.Payloads.UpInfo;
 import org.box1.console.upstream.Payloads.UpOrder;
+import org.box1.console.upstream.Payloads.UpPage;
 import org.box1.console.upstream.Payloads.UpReservation;
 import org.box1.console.upstream.Payloads.UpStock;
 import org.box1.console.upstream.Payloads.UpTimelineEntry;
@@ -37,7 +39,8 @@ public class ConsoleReads {
     private static final TypeReference<UpFulfillment> FULFILLMENT = new TypeReference<>() { };
     private static final TypeReference<List<UpStock>> STOCK = new TypeReference<>() { };
     private static final TypeReference<UpInfo> INFO = new TypeReference<>() { };
-    private static final TypeReference<Object> ANY = new TypeReference<>() { };
+    private static final TypeReference<UpPage<UpAlert>> ALERTS = new TypeReference<>() { };
+    static final int MAX_ALERTS = 100;
 
     private final Upstreams upstreams;
     private final Settings settings;
@@ -138,25 +141,48 @@ public class ConsoleReads {
     }
 
     /**
-     * Whether asset-service answers the console (it accepts only tokens issued to its own client; gap G-2). The result
-     * is cached for a minute so a known refusal does not repeat on every page load (review OPS-6).
+     * Active alerts from asset-service (box1-docs#80), newest first, at most {@value #MAX_ALERTS}. With a token, the
+     * person's own telemetry-reader role decides the answer, so nothing is cached across people. Without one,
+     * asset-service refuses the console; that refusal is cached for a minute so it does not repeat on every page load
+     * (review OPS-6).
      */
-    public SourceStatus telemetryAccess(Optional<String> token) {
-        CachedProbe cached = telemetryProbe;
-        if (cached != null && cached.at().plusSeconds(60).isAfter(java.time.Instant.now())) {
-            return cached.status();
+    public Listed<UpAlert> activeAlerts(Optional<String> token) {
+        if (token.isEmpty()) {
+            CachedProbe cached = telemetryProbe;
+            if (cached != null && cached.at().plusSeconds(60).isAfter(java.time.Instant.now())) {
+                return new Listed<>(List.of(), false, cached.status());
+            }
         }
-        UpstreamResponse<Object> r = upstreams.get(Source.ASSET_SERVICE, "/api/v1/alerts?status=ACTIVE&limit=1", token, ANY);
+        UpstreamResponse<UpPage<UpAlert>> r = upstreams.get(Source.ASSET_SERVICE,
+            "/api/v1/alerts?status=ACTIVE&limit=" + MAX_ALERTS, token, ALERTS);
         SourceStatus s = r.sourceStatus();
         if (s.status() == SourceStatus.State.NOT_AUTHORIZED) {
-            s = SourceStatus.of(Source.ASSET_SERVICE, s.status(),
-                "asset-service accepts only tokens issued to its own client, so it does not answer the console. "
-                    + "Use the telemetry console instead.", s.latencyMs());
+            String detail;
+            if (token.isEmpty()) {
+                detail = "The console does not send your sign-in to asset-service, which refuses unsigned reads. "
+                    + "Use the telemetry console instead.";
+            } else if (r.status() == 403) {
+                detail = "Your account does not hold asset-service's telemetry-reader role, so it does not show you alerts.";
+            } else {
+                detail = "asset-service did not accept your sign-in from the console (HTTP " + r.status() + "). "
+                    + "Use the telemetry console instead.";
+            }
+            s = SourceStatus.of(Source.ASSET_SERVICE, s.status(), detail, s.latencyMs());
+            if (token.isEmpty()) {
+                telemetryProbe = new CachedProbe(java.time.Instant.now(), s);
+            }
+            return new Listed<>(List.of(), false, s);
         }
-        if (s.status() == SourceStatus.State.OK || s.status() == SourceStatus.State.NOT_AUTHORIZED) {
-            telemetryProbe = new CachedProbe(java.time.Instant.now(), s);
+        if (!r.ok() || r.body() == null) {
+            return new Listed<>(List.of(), false, s);
         }
-        return s;
+        List<UpAlert> items = r.body().items() == null ? List.of() : r.body().items();
+        boolean complete = r.body().nextCursor() == null;
+        if (!complete && s.status() == SourceStatus.State.OK) {
+            s = SourceStatus.of(Source.ASSET_SERVICE, SourceStatus.State.DEGRADED,
+                "Only the newest " + items.size() + " active alerts are shown.", s.latencyMs());
+        }
+        return new Listed<>(items, complete, s);
     }
 
     public UpstreamResponse<UpInfo> info(Source source) {
