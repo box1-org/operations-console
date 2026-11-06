@@ -71,6 +71,12 @@ public class ConsoleReads {
         Optional<String> publicOrigin();
 
         /**
+         * The trace viewer link, with {@code {traceId}} replaced by a W3C trace ID (box1-docs#22). Empty means no trace
+         * backend: the evidence then names the trace ID without a link.
+         */
+        Optional<String> traceUrlTemplate();
+
+        /**
          * Whether the signed-in user's access token is forwarded to upstreams. Off by default (security review SEC-1,
          * SEC-3): the public client carries no extra audiences, and every upstream the console reads accepts anonymous
          * reads today. Turning it on needs a client whose tokens are meant for those services (user decision O-9).

@@ -67,7 +67,8 @@ Client roles `console-viewer`, `console-operator` and `console-developer` live o
 - **Order service as the only source.** When order-service fails, the overview reports its indicators as absent (null), not zero. Order detail returns 503 naming the source.
 
 - Upstream calls have no retries. At most 8 are in flight per upstream, and excess calls fail fast as `DEGRADED`.
-- Each call carries a W3C `traceparent`. The browser starts a trace per request and the backend continues it. Export is off until a collector exists (box1-docs#22).
+- Each call carries a W3C `traceparent`. The browser starts a trace per request and the backend continues it (box1-docs#22).
+- The order's **Trace** evidence links to the OpenShift console trace viewer (Observe > Traces, `box1-observability/box1`, tenant `dev`) through `CONSOLE_TRACE_URL_TEMPLATE`, with `{traceId}` replaced by the order's W3C trace ID. Opening it needs OpenShift access. An empty template, or a missing or all-zero trace ID, shows the ID without a link.
 - Logs are JSON and never include tokens, cookies or bodies.
 
 ## ERP progress

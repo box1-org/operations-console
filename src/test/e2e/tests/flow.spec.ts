@@ -42,7 +42,8 @@ test('seed order, submit, follow the timeline through a held ERP request to comp
   // Diagnosis links: trace and correlation IDs, and the deployed source revision.
   await expect(page.getByTestId('timeline')).toContainText('fulfillment.requested.v1');
   await expect(page.getByTestId('evidence').locator('[data-kind="source-revision"] a')).toHaveAttribute('href', /github\.com\/box1-org\/order-service\/commit\//);
-  await expect(page.getByTestId('evidence').locator('[data-kind="trace"]')).toContainText('not available');
+  await expect(page.getByTestId('evidence').locator('[data-kind="trace"] a'))
+    .toHaveAttribute('href', /^https:\/\/console-openshift-console\.apps\.ocp\.box1\.org\/observe\/traces\/[0-9a-f]{32}\?namespace=box1-observability&name=box1&tenant=dev$/);
   await shot(page, '03-awaiting-erp');
 
   await stub(request, { fulfillment: { orderId: id, dispatch: 'UPLOADED', erpAcknowledgement: 'ACKNOWLEDGED', outcome: 'PENDING' } });
