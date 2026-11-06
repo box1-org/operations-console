@@ -1,0 +1,468 @@
+openapi: 3.1.0
+info:
+  title: operations-console REST API
+  version: 1.0.0
+  description: |
+    Console backend for the box1 Operations console (box1-docs#18). It serves only the console's pages,
+    holds the operator's Keycloak session, and owns no business state.
+
+    Authentication is the console's session cookie, set by the Keycloak code flow when a page is opened.
+    Requests without a session get 401, and requests without the needed client role get 403.
+    State-changing calls must also send `X-Box1-Console: 1` and a JSON body.
+
+    Aggregate responses carry `sources`. A source that is slow, down or refuses the call is reported
+    there, and its values are absent, never guessed. Paths match the Experience/BFF prompt (box1-docs#17)
+    where that prompt defines them, so the BFF can later serve this contract without page changes.
+servers:
+  - url: /
+tags:
+  - name: console
+    description: Console backend (session-authenticated)
+paths:
+  /api/v1/me:
+    get:
+      tags: [console]
+      operationId: getMe
+      summary: The signed-in user's name, console roles and environment
+      responses:
+        "200":
+          description: Current session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/overview:
+    get:
+      tags: [console]
+      operationId: getOverview
+      summary: Business indicators and the exception queue (console-viewer)
+      responses:
+        "200":
+          description: Overview, possibly partial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Overview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/orders:
+    get:
+      tags: [console]
+      operationId: listOrders
+      summary: Recent orders with filter, sort and pagination over a bounded window (console-viewer)
+      parameters:
+        - { name: state, in: query, schema: { $ref: "#/components/schemas/OrderState" } }
+        - { name: siteId, in: query, schema: { type: string, pattern: "^site_[A-Za-z0-9_-]{1,64}$" } }
+        - { name: sku, in: query, schema: { type: string, minLength: 1, maxLength: 80 } }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [createdAt, -createdAt, updatedAt, -updatedAt], default: -createdAt }
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: One page of matching orders from the scanned window
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [console]
+      operationId: placeOrder
+      summary: Place an order through the order service (console-operator)
+      parameters:
+        - name: X-Box1-Console
+          in: header
+          required: true
+          schema: { type: string, const: "1" }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: One key per form submission, reused for its retries.
+          schema: { type: string, minLength: 1, maxLength: 255 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaceOrder" }
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlacedOrder" }
+        "200":
+          description: Same key and payload as an earlier submission; the earlier order is returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlacedOrder" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/orders/{orderId}/summary:
+    get:
+      tags: [console]
+      operationId: getOrderSummary
+      summary: Order state, reservation, fulfillment and ERP progress, timeline and evidence (console-viewer)
+      parameters:
+        - { $ref: "#/components/parameters/OrderId" }
+      responses:
+        "200":
+          description: Summary, possibly partial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/incidents:
+    get:
+      tags: [console]
+      operationId: listIncidents
+      summary: Incidents derived from recent orders and fulfillment status (console-viewer)
+      responses:
+        "200":
+          description: Derived incidents, possibly partial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/incidents/{incidentId}/evidence:
+    get:
+      tags: [console]
+      operationId: getIncidentEvidence
+      summary: Evidence for one incident (console-viewer)
+      parameters:
+        - name: incidentId
+          in: path
+          required: true
+          schema: { type: string, pattern: "^inc_ord_[A-Za-z0-9_-]{1,64}$" }
+      responses:
+        "200":
+          description: Evidence, possibly partial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentEvidence" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/sites:
+    get:
+      tags: [console]
+      operationId: listSites
+      summary: Stock by site and telemetry status (console-viewer)
+      responses:
+        "200":
+          description: Sites, possibly partial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/delivery:
+    get:
+      tags: [console]
+      operationId: getDelivery
+      summary: Deployed source revision of the console and each upstream (console-developer)
+      responses:
+        "200":
+          description: Revisions, possibly partial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Delivery" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/scenarios:
+    get:
+      tags: [console]
+      operationId: listScenarios
+      summary: Named demo scenarios from the scenario controller (box1-docs#19), when it exists (console-viewer)
+      responses:
+        "200":
+          description: Scenario catalog, or the controller's absence in `sources`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+components:
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, pattern: "^ord_[A-Za-z0-9_-]{1,64}$" }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Unauthorized:
+      description: No console session; open the console to sign in
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Forbidden:
+      description: Signed in without the needed console role, or a state-changing call without the console header
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    NotFound:
+      description: Not found
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Conflict:
+      description: Same idempotency key with a different payload
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Unavailable:
+      description: The authoritative source for this resource did not answer
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details
+      required: [type, title, status, code]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string, description: "Stable machine-readable code, e.g. SESSION_REQUIRED, ROLE_REQUIRED, CONSOLE_HEADER_REQUIRED, UPSTREAM_UNAVAILABLE" }
+        source: { $ref: "#/components/schemas/SourceName" }
+    SourceName:
+      type: string
+      enum: [order-service, inventory-service, fulfillment-adapter, asset-service, scenario-controller]
+    SourceStatus:
+      type: object
+      description: How one upstream answered while building this response (#17 calls this sourceStatus)
+      required: [source, status, observedAt]
+      properties:
+        source: { $ref: "#/components/schemas/SourceName" }
+        status:
+          type: string
+          enum: [OK, DEGRADED, UNAVAILABLE, NOT_AUTHORIZED, NOT_CONFIGURED]
+        detail: { type: string }
+        latencyMs: { type: [integer, "null"] }
+        observedAt: { type: string, format: date-time }
+    Sources:
+      type: array
+      items: { $ref: "#/components/schemas/SourceStatus" }
+    ConsoleRole:
+      type: string
+      enum: [console-viewer, console-operator, console-developer]
+    Me:
+      type: object
+      required: [username, roles, environment]
+      properties:
+        username: { type: string }
+        roles: { type: array, items: { $ref: "#/components/schemas/ConsoleRole" } }
+        environment: { type: string, description: "Namespace/environment the console serves, e.g. operations-console-dev" }
+    OrderState:
+      type: string
+      enum: [SUBMITTED, RESERVED, FULFILLMENT_REQUESTED, SHIPPED, COMPLETED, REJECTED, EXCEPTION, CANCELLED]
+    Order:
+      type: object
+      description: Customer-safe order fields from the order service
+      required: [orderId, state, stateLabel, customerId, sku, quantity, siteId, createdAt, updatedAt]
+      properties:
+        orderId: { type: string }
+        state: { $ref: "#/components/schemas/OrderState" }
+        stateLabel: { type: string, description: "Display label; FULFILLMENT_REQUESTED is 'Awaiting ERP acknowledgement'" }
+        statusReason: { type: [string, "null"] }
+        customerId: { type: string, description: Opaque synthetic identifier }
+        sku: { type: string }
+        quantity: { type: integer }
+        siteId: { type: string }
+        reservationId: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        correlationId: { type: [string, "null"] }
+        traceId: { type: [string, "null"] }
+    OrderPage:
+      type: object
+      required: [items, page, size, total, window, sources]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Order" } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, description: Matching orders within the scanned window }
+        window:
+          type: object
+          required: [scanned, complete]
+          properties:
+            scanned: { type: integer, description: How many recent orders were read }
+            complete: { type: boolean, description: False when older orders exist beyond the window }
+        sources: { $ref: "#/components/schemas/Sources" }
+    PlaceOrder:
+      type: object
+      additionalProperties: false
+      required: [customerId, sku, quantity, siteId]
+      properties:
+        customerId: { type: string, pattern: "^cust_[A-Za-z0-9_-]{1,64}$" }
+        sku: { type: string, minLength: 1, maxLength: 80 }
+        quantity: { type: integer, minimum: 1, maximum: 1000 }
+        siteId: { type: string, pattern: "^site_[A-Za-z0-9_-]{1,64}$" }
+    PlacedOrder:
+      type: object
+      required: [order, replayed]
+      properties:
+        order: { $ref: "#/components/schemas/Order" }
+        replayed: { type: boolean, description: True when the order service returned an earlier order for the same key }
+    Reservation:
+      type: object
+      required: [reservationId, status]
+      properties:
+        reservationId: { type: string }
+        status: { type: string, description: "ACTIVE, COMMITTED, CONSUMED, EXPIRED or RELEASED" }
+        expiresAt: { type: [string, "null"], format: date-time }
+        updatedAt: { type: [string, "null"], format: date-time }
+    ErpProgress:
+      type: object
+      description: ERP progress. Refined from the fulfillment adapter only when it answered; never guessed.
+      required: [stage, label, tone, linkMode]
+      properties:
+        stage:
+          type: string
+          enum: [NOT_APPLICABLE, UNAVAILABLE, NOT_RECEIVED, QUEUED, UPLOADED_AWAITING_ACK, ACCEPTED, HELD, SHIPPED, REJECTED, NEEDS_ATTENTION]
+        label: { type: string }
+        tone: { type: string, enum: [neutral, waiting, attention, failure, done, unknown] }
+        detail: { type: [string, "null"] }
+        linkMode: { type: string, enum: [derived, none], description: How the fulfillment request was found (see D-008) }
+        fulfillmentRequestId: { type: [string, "null"] }
+        dispatch: { type: [string, "null"] }
+        erpAcknowledgement: { type: [string, "null"] }
+        outcome: { type: [string, "null"] }
+        needsAttentionReason: { type: [string, "null"] }
+        revision: { type: [integer, "null"] }
+        uploads: { type: [integer, "null"] }
+        resends: { type: [integer, "null"] }
+        shipmentId: { type: [string, "null"] }
+        statusAt: { type: [string, "null"], format: date-time }
+    TimelineEntry:
+      type: object
+      required: [sequence, kind, reasonCode, occurredAt, description]
+      properties:
+        sequence: { type: integer }
+        kind: { type: string, enum: [TRANSITION, NOTE] }
+        description: { type: string, description: Human-readable sentence }
+        reasonCode: { type: string }
+        fromState: { type: [string, "null"] }
+        toState: { type: [string, "null"] }
+        occurredAt: { type: string, format: date-time }
+        eventId: { type: [string, "null"] }
+        eventType: { type: [string, "null"] }
+        causationId: { type: [string, "null"] }
+        correlationId: { type: [string, "null"] }
+        traceId: { type: [string, "null"] }
+    EvidenceLink:
+      type: object
+      required: [kind, label, available]
+      properties:
+        kind: { type: string, enum: [trace, logs, dashboard, source-revision] }
+        label: { type: string }
+        available: { type: boolean }
+        href: { type: [string, "null"] }
+        reason: { type: [string, "null"], description: Why the link is unavailable }
+    OrderSummary:
+      type: object
+      required: [order, erp, timeline, timelineComplete, evidence, sources]
+      properties:
+        order: { $ref: "#/components/schemas/Order" }
+        reservation: { oneOf: [{ $ref: "#/components/schemas/Reservation" }, { type: "null" }] }
+        erp: { $ref: "#/components/schemas/ErpProgress" }
+        timeline: { type: array, items: { $ref: "#/components/schemas/TimelineEntry" } }
+        timelineComplete: { type: boolean }
+        evidence: { type: array, items: { $ref: "#/components/schemas/EvidenceLink" } }
+        sources: { $ref: "#/components/schemas/Sources" }
+    Indicators:
+      type: object
+      required: [byState, stuck, exceptions, scanned, windowComplete]
+      properties:
+        byState: { type: object, additionalProperties: { type: integer } }
+        stuck: { type: integer, description: "Awaiting ERP acknowledgement longer than the threshold" }
+        exceptions: { type: integer }
+        scanned: { type: integer }
+        windowComplete: { type: boolean }
+    Incident:
+      type: object
+      required: [incidentId, orderId, kind, title, since, active, derived]
+      properties:
+        incidentId: { type: string }
+        orderId: { type: string }
+        kind: { type: string, enum: [ORDER_EXCEPTION, AWAITING_ERP_TOO_LONG] }
+        title: { type: string }
+        since: { type: string, format: date-time }
+        active:
+          type: boolean
+          description: False only when the order service now reports the order past the incident; the console never infers resolution
+        derived: { type: boolean, description: Always true until an incident contract exists (#17) }
+    Overview:
+      type: object
+      required: [indicators, exceptionQueue, stuckThresholdMinutes, sources]
+      properties:
+        indicators: { $ref: "#/components/schemas/Indicators" }
+        exceptionQueue: { type: array, items: { $ref: "#/components/schemas/Incident" } }
+        stuckThresholdMinutes: { type: integer }
+        sources: { $ref: "#/components/schemas/Sources" }
+    IncidentList:
+      type: object
+      required: [items, sources]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Incident" } }
+        sources: { $ref: "#/components/schemas/Sources" }
+    IncidentEvidence:
+      type: object
+      required: [incident, summary, sources]
+      properties:
+        incident: { $ref: "#/components/schemas/Incident" }
+        summary: { $ref: "#/components/schemas/OrderSummary" }
+        sources: { $ref: "#/components/schemas/Sources" }
+    StockLevel:
+      type: object
+      required: [sku, onHand, reserved, available]
+      properties:
+        sku: { type: string }
+        onHand: { type: integer }
+        reserved: { type: integer }
+        available: { type: integer }
+        updatedAt: { type: [string, "null"], format: date-time }
+    Site:
+      type: object
+      required: [siteId, stock]
+      properties:
+        siteId: { type: string }
+        stock: { type: array, items: { $ref: "#/components/schemas/StockLevel" } }
+    SiteList:
+      type: object
+      required: [items, telemetryConsoleUrl, sources]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Site" } }
+        telemetryConsoleUrl: { type: string }
+        sources: { $ref: "#/components/schemas/Sources" }
+    ServiceRevision:
+      type: object
+      required: [service]
+      properties:
+        service: { type: string }
+        gitRef: { type: [string, "null"] }
+        version: { type: [string, "null"] }
+        commitUrl: { type: [string, "null"] }
+    Delivery:
+      type: object
+      required: [services, sources]
+      properties:
+        services: { type: array, items: { $ref: "#/components/schemas/ServiceRevision" } }
+        sources: { $ref: "#/components/schemas/Sources" }
+    Scenario:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: [string, "null"] }
+    ScenarioList:
+      type: object
+      required: [items, telemetryConsoleUrl, sources]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Scenario" } }
+        telemetryConsoleUrl: { type: string }
+        sources: { $ref: "#/components/schemas/Sources" }
