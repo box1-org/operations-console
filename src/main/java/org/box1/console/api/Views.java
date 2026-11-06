@@ -11,7 +11,8 @@ public final class Views {
     private Views() {
     }
 
-    public record Me(String username, List<String> roles, String environment) {
+    /** {@code scenarioRoles}: the person's roles on the scenario controller (box1-docs#19), which it enforces itself. */
+    public record Me(String username, List<String> roles, String environment, List<String> scenarioRoles) {
     }
 
     public record Order(String orderId, String state, String stateLabel, String statusReason, String customerId, String sku,
@@ -80,9 +81,49 @@ public final class Views {
     public record Delivery(List<ServiceRevision> services, List<SourceStatus> sources) {
     }
 
-    public record Scenario(String name, String description) {
+    public record Scenario(String name, String title, String description, String mechanism, String availability,
+        String notPossibleReason, Integer defaultDurationSeconds, Integer maxDurationSeconds, String expectedObservation,
+        String resetAction, List<String> operatorSteps) {
     }
 
     public record ScenarioList(List<Scenario> items, String telemetryConsoleUrl, List<SourceStatus> sources) {
+    }
+
+    public record ScenarioAudit(Long seq, String scenarioRunId, String scenario, String action, String outcome, String actor,
+        String environment, String detail, Instant occurredAt, String stardate) {
+    }
+
+    public record ScenarioRun(String scenarioRunId, String scenario, String title, String mode, String status, String detail,
+        String operatorStep, String operatorStepId, String actor, String environment, Integer ttlSeconds,
+        String correlationId, Instant startedAt, String startedStardate, Instant expiresAt, Instant endedAt,
+        String resetResult, String resetDetail, Instant resetAt, List<ScenarioAudit> audit) {
+    }
+
+    public record ScenarioRunList(List<ScenarioRun> items, List<SourceStatus> sources) {
+    }
+
+    public record ScenarioAuditList(List<ScenarioAudit> items, List<SourceStatus> sources) {
+    }
+
+    public record FixtureSite(String siteId, String displayName, String status) {
+    }
+
+    public record FixtureCustomer(String customerId, String displayName) {
+    }
+
+    public record FixtureProduct(String sku, String displayName) {
+    }
+
+    public record FixtureStock(String siteId, String sku, Integer openingQuantity) {
+    }
+
+    public record ScenarioFixtures(List<FixtureSite> sites, List<FixtureCustomer> customers, List<FixtureProduct> products,
+        List<FixtureStock> stock, List<SourceStatus> sources) {
+    }
+
+    public record SeedResult(int created, int unchanged) {
+    }
+
+    public record ResetResult(String scenarioRunId, String resetId, String resetResult, String resetDetail) {
     }
 }

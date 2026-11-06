@@ -34,4 +34,9 @@ export function useHasRole(...roles: Role[]): boolean {
   return roles.some((r) => me.roles.includes(r));
 }
 
+/** Holds scenario-operator on the scenario controller (#19); the controller enforces it, this only shapes the page. */
+export function useScenarioOperator(): boolean {
+  return useSession().scenarioRoles.includes('scenario-operator');
+}
+
 export const VIEW_ROLES: Role[] = ['console-viewer', 'console-operator', 'console-developer'];

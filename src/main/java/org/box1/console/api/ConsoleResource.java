@@ -41,13 +41,13 @@ import org.box1.console.domain.Incidents;
 import org.box1.console.domain.StateLabels;
 import org.box1.console.domain.TimelineText;
 import org.box1.console.security.ConsoleRoles;
+import org.box1.console.security.ScenarioToken;
 import org.box1.console.security.SessionTokens;
 import org.box1.console.upstream.Fanout;
 import org.box1.console.upstream.Payloads.UpFulfillment;
 import org.box1.console.upstream.Payloads.UpInfo;
 import org.box1.console.upstream.Payloads.UpOrder;
 import org.box1.console.upstream.Payloads.UpReservation;
-import org.box1.console.upstream.Payloads.UpScenario;
 import org.box1.console.upstream.Payloads.UpTimelineEntry;
 import org.box1.console.upstream.Source;
 import org.box1.console.upstream.SourceStatus;
@@ -63,7 +63,6 @@ import org.box1.console.upstream.Upstreams;
 @Produces(MediaType.APPLICATION_JSON)
 public class ConsoleResource {
     private static final TypeReference<UpOrder> ORDER = new TypeReference<>() { };
-    private static final TypeReference<List<UpScenario>> SCENARIOS = new TypeReference<>() { };
     private static final Map<Source, String> REPOS = Map.of(Source.ORDER_SERVICE, "order-service",
         Source.INVENTORY_SERVICE, "inventory-service", Source.FULFILLMENT_ADAPTER, "fulfillment-adapter",
         Source.ASSET_SERVICE, "asset-service");
@@ -75,19 +74,21 @@ public class ConsoleResource {
     private final Fanout fanout;
     private final SecurityIdentity identity;
     private final InfoResource selfInfo;
+    private final ScenarioToken scenarioToken;
     private final Map<Source, CachedInfo> infoCache = new ConcurrentHashMap<>();
 
     record CachedInfo(Instant at, UpstreamResponse<UpInfo> response) {
     }
 
     public ConsoleResource(ConsoleReads reads, Upstreams upstreams, UpstreamConfig upstreamConfig, Fanout fanout,
-        SecurityIdentity identity, InfoResource selfInfo) {
+        SecurityIdentity identity, InfoResource selfInfo, ScenarioToken scenarioToken) {
         this.reads = reads;
         this.upstreams = upstreams;
         this.upstreamConfig = upstreamConfig;
         this.fanout = fanout;
         this.identity = identity;
         this.selfInfo = selfInfo;
+        this.scenarioToken = scenarioToken;
     }
 
     @GET
@@ -95,7 +96,7 @@ public class ConsoleResource {
     @RolesAllowed("**")
     public Views.Me me() {
         List<String> roles = ConsoleRoles.ALL.stream().filter(identity::hasRole).toList();
-        return new Views.Me(identity.getPrincipal().getName(), roles, reads.settings().environment());
+        return new Views.Me(identity.getPrincipal().getName(), roles, reads.settings().environment(), scenarioToken.roles());
     }
 
     @GET
@@ -269,22 +270,6 @@ public class ConsoleResource {
             services.add(new Views.ServiceRevision(s.id(), ref, r.ok() ? r.body().version() : null, commitUrl(REPOS.get(s), ref)));
         });
         return new Views.Delivery(services, sources);
-    }
-
-    @GET
-    @Path("/scenarios")
-    @RolesAllowed({ConsoleRoles.VIEWER, ConsoleRoles.OPERATOR, ConsoleRoles.DEVELOPER})
-    public Views.ScenarioList scenarios() {
-        String telemetry = reads.settings().telemetryConsoleUrl();
-        if (!upstreams.configured(Source.SCENARIO_CONTROLLER)) {
-            return new Views.ScenarioList(List.of(), telemetry, List.of(SourceStatus.of(Source.SCENARIO_CONTROLLER,
-                SourceStatus.State.NOT_CONFIGURED, "The scenario controller (box1-docs#19) is not deployed.", null)));
-        }
-        UpstreamResponse<List<UpScenario>> r = upstreams.get(Source.SCENARIO_CONTROLLER, "/internal/v1/scenarios",
-            reads.forwardable(SessionTokens.accessToken(identity)), SCENARIOS);
-        List<Views.Scenario> items = r.ok()
-            ? r.body().stream().map(s -> new Views.Scenario(s.name(), s.description())).toList() : List.of();
-        return new Views.ScenarioList(items, telemetry, List.of(r.sourceStatus()));
     }
 
     // ---- helpers ----

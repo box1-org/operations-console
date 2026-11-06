@@ -25,7 +25,7 @@ Roles are client roles on the Keycloak client `operations-console`. The backend 
 | Incidents and evidence | `/incidents` | viewer |
 | Sites & assets | `/sites` | viewer |
 | Delivery (deployed revisions) | `/delivery` | `console-developer` |
-| Demo control (read-only until box1-docs#19) | `/demo` | viewer |
+| Demo control: scenario catalog, seed, start/stop/reset, live run, audit (box1-docs#19) | `/demo` | viewer; actions need operator here and `scenario-operator` on the scenario controller |
 
 ## Build and test
 
@@ -59,6 +59,7 @@ These settings are deployment environment variables. Defaults are in `applicatio
 | `ORDER_SERVICE_URL`, `INVENTORY_SERVICE_URL`, `FULFILLMENT_ADAPTER_URL`, `ASSET_SERVICE_URL`, `SCENARIO_CONTROLLER_URL` | In-cluster upstream base URLs. When one is empty, that source is reported "not connected" | unset |
 | `CONSOLE_FULFILLMENT_LINK` | `derived` uses order-service's internal `ord_x → ful_x` convention to find ERP status; `none` shows "ERP detail unavailable" | `none` |
 | `CONSOLE_FORWARD_USER_TOKEN` | Forward the user's access token to upstreams. Keep `false` with the public client: its tokens are obtainable by any realm user, so it carries no other service's audience | `false` |
+| `CONSOLE_SCENARIO_FORWARD_TOKEN` | Send the user's token to the scenario controller only (its audience is added by the console's Keycloak client); see docs/architecture.md | `false` |
 | `CONSOLE_STUCK_THRESHOLD` | Time awaiting ERP acknowledgement before an order becomes an incident | `10m` |
 | `CONSOLE_ENVIRONMENT`, `TELEMETRY_CONSOLE_URL` | Shown in the header, and the link target for telemetry | dev values |
 

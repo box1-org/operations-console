@@ -136,3 +136,15 @@ input, select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--i
 .react-aria-ListBoxItem[data-focus-visible] { outline: 3px solid var(--focus); outline-offset: -3px; }
 .react-aria-ListBoxItem[data-selected] { font-weight: 700; }
 .react-aria-NumberField [slot="description"] { font-weight: 400; color: var(--ink-2); }
+
+/* Demo control (box1-docs#19) */
+.scenario-grid { list-style: none; padding: 0; margin: 0 0 1rem; }
+.scenario h3 { margin: 0 0 0.25rem; }
+.scenario[data-availability="NOT_YET_POSSIBLE"] { opacity: 0.85; }
+.steps { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 0; }
+.active-run { border-left: 4px solid var(--waiting-ink); }
+.active-run[data-run-status="AWAITING_OPERATOR"] { border-left-color: var(--attention-ink); }
+h2.inline { display: inline; font-size: 1.25rem; }
+details { margin: 1rem 0; }
+summary { cursor: pointer; }

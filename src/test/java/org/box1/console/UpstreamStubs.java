@@ -15,14 +15,17 @@ public class UpstreamStubs implements QuarkusTestResourceLifecycleManager {
         server = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         server.start();
         String base = "http://localhost:" + server.port();
-        return Map.of(
-            "console.upstream.order-service-url", base + "/order",
-            "console.upstream.inventory-service-url", base + "/inventory",
-            "console.upstream.fulfillment-adapter-url", base + "/fulfillment",
-            "console.upstream.asset-service-url", base + "/asset",
-            "console.fulfillment-link", "derived",
-            "console.upstream.read-timeout", "800ms",
-            "console.upstream.page-budget", "1500ms");
+        return Map.ofEntries(
+            Map.entry("console.upstream.order-service-url", base + "/order"),
+            Map.entry("console.upstream.inventory-service-url", base + "/inventory"),
+            Map.entry("console.upstream.fulfillment-adapter-url", base + "/fulfillment"),
+            Map.entry("console.upstream.asset-service-url", base + "/asset"),
+            Map.entry("console.upstream.scenario-controller-url", base + "/scenario"),
+            Map.entry("console.upstream.scenario-controller-forward-token", "true"),
+            Map.entry("console.fulfillment-link", "derived"),
+            Map.entry("console.upstream.read-timeout", "800ms"),
+            Map.entry("console.upstream.page-budget", "1500ms"),
+            Map.entry("console.upstream.scenario-action-timeout", "2s"));
     }
 
     @Override
