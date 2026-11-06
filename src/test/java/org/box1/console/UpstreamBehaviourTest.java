@@ -54,7 +54,9 @@ class UpstreamBehaviourTest {
             .body("timeline[0].traceId", is("0af7651916cd43dd8448eb211c80319c"))
             .body("evidence.find { it.kind == 'source-revision' }.href",
                 is("https://github.com/box1-org/order-service/commit/8fda08763e2a593d67cabea73fb84e762cb41a21"))
-            .body("evidence.find { it.kind == 'trace' }.available", is(false))
+            .body("evidence.find { it.kind == 'trace' }.available", is(true))
+            .body("evidence.find { it.kind == 'trace' }.href", is("https://console-openshift-console.apps.ocp.box1.org/observe/traces/"
+                + "0af7651916cd43dd8448eb211c80319c?namespace=box1-observability&name=box1&tenant=dev"))
             .body("sources.find { it.source == 'fulfillment-adapter' }.status", is("OK"));
     }
 

@@ -369,8 +369,8 @@ public class ConsoleResource {
 
         UpstreamResponse<UpInfo> info = Fanout.await(infoF, deadline, new UpstreamResponse<>(0, null, null, late(Source.ORDER_SERVICE)));
         List<Views.EvidenceLink> evidence = new ArrayList<>();
-        String noBackend = "No trace, log or dashboard backend is deployed yet (box1-docs#22). Use the IDs in the timeline.";
-        evidence.add(new Views.EvidenceLink("trace", "Trace " + Optional.ofNullable(order.traceId()).orElse("(none)"), false, null, noBackend));
+        String noBackend = "No log or dashboard backend is deployed yet (box1-docs#22). Use the IDs in the timeline.";
+        evidence.add(traceEvidence(order.traceId()));
         evidence.add(new Views.EvidenceLink("logs", "Order service logs", false, null, noBackend));
         evidence.add(new Views.EvidenceLink("dashboard", "Fulfillment dashboard", false, null, noBackend));
         String ref = info.ok() ? info.body().gitRef() : null;
@@ -384,6 +384,21 @@ public class ConsoleResource {
                 e.toState(), e.occurredAt(), e.eventId(), e.eventType(), e.causationId(), e.correlationId(), e.traceId()))
             .toList();
         return new Views.OrderSummary(view(order), reservation, erp, entries, timeline.complete(), evidence, sources);
+    }
+
+    private static final java.util.regex.Pattern TRACE_ID = java.util.regex.Pattern.compile("^[0-9a-f]{32}$");
+
+    /** The order's trace in the OpenShift trace viewer (box1-docs#22), when a template is set and the ID is valid. */
+    private Views.EvidenceLink traceEvidence(String traceId) {
+        String label = "Trace " + Optional.ofNullable(traceId).orElse("(none)");
+        Optional<String> template = reads.settings().traceUrlTemplate().map(String::strip).filter(t -> t.contains("{traceId}"));
+        if (template.isEmpty()) {
+            return new Views.EvidenceLink("trace", label, false, null, "No trace viewer is configured. Use the IDs in the timeline.");
+        }
+        if (traceId == null || !TRACE_ID.matcher(traceId).matches() || traceId.chars().allMatch(c -> c == '0')) {
+            return new Views.EvidenceLink("trace", label, false, null, "The order service reported no valid trace ID.");
+        }
+        return new Views.EvidenceLink("trace", label, true, template.get().replace("{traceId}", traceId), null);
     }
 
     private UpstreamResponse<UpInfo> cachedInfo(Source source) {
