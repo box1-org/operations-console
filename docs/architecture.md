@@ -92,5 +92,5 @@ The order-service state label is always shown. When the fulfillment adapter answ
 ## Brand
 
 - `brand/box1-mark.png` is the `box1-org` avatar supplied by the project owner, byte-identical to asset-service's copy (SHA-256 `11ccbb2dc79258163cc516ed398132ad320ebf9870c75da64cb8b6f2919762ea`, asserted by `FrontendServingTest`). Do not regenerate it.
-- The favicon is the same unmodified file.
+- Favicons `brand/box1-mark-32.png` (SHA-256 `1692fcb8…a576e`) and `brand/box1-mark-180.png` (`53961816…83f5e`) are **resized only** from that file, with `sips -z 32 32` and `sips -z 180 180` (sips-316, macOS 15.6). The user approved this on 2026-11-06. The hashes are asserted by `FrontendServingTest`.
 - Styling uses system fonts and a monochrome palette with a faint grid. It respects `prefers-reduced-motion` and dark mode.

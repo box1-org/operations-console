@@ -11,13 +11,13 @@ const SHOTS = process.env.SHOTS_DIR ?? `${process.env.RUN_DIR}/live-screens`;
 mkdirSync(SHOTS, { recursive: true });
 const JWT = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./;
 
-async function signIn(page: Page, path = '/') {
+async function signIn(page: Page, path = '/', user = USER, passwordFile = 'live-password') {
   await page.goto(BASE + path);
-  await page.locator('#username').fill(USER);
-  await page.locator('#password').fill(readFileSync(`${process.env.RUN_DIR}/live-password`, 'utf8'));
+  await page.locator('#username').fill(user);
+  await page.locator('#password').fill(readFileSync(`${process.env.RUN_DIR}/${passwordFile}`, 'utf8'));
   await page.locator('#kc-login').click();
   await page.waitForURL((u) => u.host === new URL(BASE).host && !u.pathname.startsWith('/callback'));
-  await expect(page.locator('.topbar .user')).toContainText(USER);
+  await expect(page.locator('.topbar .user')).toContainText(user);
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -135,6 +135,25 @@ test('live: place order lists the inventory service\'s sites and SKUs (read-only
   await page.keyboard.press('Escape');
   await page.screenshot({ path: `${SHOTS}/live_place_order.png`, fullPage: true });
   console.log('LIVE place-order sites', shown.join(','), '| first site SKUs', skus.join(','));
+});
+
+test('live: a signed-in user without console roles gets 403 on every API path and a forbidden page', async ({ page }) => {
+  const NOROLE = process.env.LIVE_NOROLE_USER ?? '';
+  test.skip(!NOROLE, 'LIVE_NOROLE_USER not set');
+  await signIn(page, '/', NOROLE, 'live-password-noroles');
+  await expect(page.locator('.topbar .roles')).toHaveText('no console role');
+  await expect(page.getByTestId('forbidden')).toBeVisible();
+  for (const path of ['/api/v1/overview', '/api/v1/orders', '/api/v1/orders/ord_x/summary', '/api/v1/incidents',
+    '/api/v1/incidents/inc_ord_x/evidence', '/api/v1/sites', '/api/v1/delivery', '/api/v1/scenarios']) {
+    const r = await page.request.get(BASE + path);
+    expect(r.status(), path).toBe(403);
+    expect((await r.json()).code).toBe('ROLE_REQUIRED');
+  }
+  const post = await page.request.post(BASE + '/api/v1/orders', { headers: { 'X-Box1-Console': '1', 'Idempotency-Key': 'live-norole-1' },
+    data: { customerId: 'cust_demo_ada', sku: 'SKU-42', quantity: 1, siteId: 'site_nyc' } });
+  expect(post.status()).toBe(403);
+  expect((await post.json()).code).toBe('ROLE_REQUIRED');
+  await page.screenshot({ path: `${SHOTS}/live_forbidden.png`, fullPage: true });
 });
 
 test('live: logout ends the session', async ({ page }) => {
