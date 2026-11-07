@@ -85,6 +85,18 @@ test('commands, a full model queue, a model outage and an expired analysis are e
   await expect(page.getByTestId('assistant-problem').last()).toHaveAttribute('data-code', 'ANALYSIS_EXPIRED');
   await expect(page.getByTestId('assistant-problem').last()).toContainText('never regenerated');
   await shot(page, '21-assistant-states');
+
+  // Regression (found live): more messages after an expired analysis keep the page working, and the expired
+  // analysis is asked for once, not polled.
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await say(page, 'why is ERP slow?');
+  await say(page, 'help');
+  await page.waitForTimeout(5000);
+  await expect(page.getByTestId('chat-input')).toBeVisible();
+  expect(errors).toEqual([]);
+  const seen = (await (await request.get(`${STUBS}/__control`)).json()).seen as { svc: string; path: string }[];
+  expect(seen.filter((s) => s.svc === 'aiops' && s.path.endsWith('ana_0123456789abcdef0123456789abcdef'))).toHaveLength(1);
 });
 
 test('a viewer can read but not start analyses, and the service refuses a direct call', async ({ page, request }) => {

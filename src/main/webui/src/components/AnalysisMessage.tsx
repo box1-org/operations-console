@@ -29,9 +29,16 @@ export function AnalysisMessage({ analysisId }: { analysisId: string }) {
   const started = useRef(Date.now());
   const [capped, setCapped] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [refused, setRefused] = useState(false);
   const { state, reload } = useResource(
     (signal) => api.GET('/api/v1/assistant/analyses/{analysisId}', { params: { path: { analysisId } }, signal }),
-    [analysisId], { refreshMs: finished || capped ? undefined : POLL_MS });
+    [analysisId], { refreshMs: finished || capped || refused ? undefined : POLL_MS });
+
+  // An expired, unknown or refused analysis will not change by asking again: stop polling (5xx keeps retrying).
+  const nowRefused = state.kind === 'error' && state.problem.status >= 400 && state.problem.status < 500;
+  useEffect(() => {
+    if (nowRefused) setRefused(true);
+  }, [nowRefused]);
 
   const nowFinished = state.kind === 'ready' && state.data.finished;
   useEffect(() => {
