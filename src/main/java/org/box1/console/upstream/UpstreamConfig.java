@@ -19,6 +19,8 @@ public interface UpstreamConfig {
 
     Optional<String> scenarioControllerUrl();
 
+    Optional<String> agenticOperationsUrl();
+
     @WithDefault("1s")
     Duration connectTimeout();
 
@@ -46,6 +48,19 @@ public interface UpstreamConfig {
     @WithDefault("false")
     boolean assetServiceForwardToken();
 
+    /**
+     * Send the signed-in user's access token to agentic-operations, and only to it (box1-docs#101). The console's
+     * Keycloak client adds the audience {@code agentic-operations} and maps only {@code aiops-viewer} and
+     * {@code aiops-analyst}; agentic-operations accepts tokens whose azp is {@code operations-console} and checks the
+     * person's own aiops roles, and its audit names the person.
+     */
+    @WithDefault("false")
+    boolean agenticOperationsForwardToken();
+
+    /** Submitting an analysis checks the incident's order synchronously before queueing; the analysis itself is polled. */
+    @WithDefault("10s")
+    Duration assistantSubmitTimeout();
+
     /** Seed, stop and reset wait for the controller's work (a reset waits for its orders to be decided). */
     @WithDefault("45s")
     Duration scenarioActionTimeout();
@@ -57,6 +72,7 @@ public interface UpstreamConfig {
             case FULFILLMENT_ADAPTER -> fulfillmentAdapterUrl();
             case ASSET_SERVICE -> assetServiceUrl();
             case SCENARIO_CONTROLLER -> scenarioControllerUrl();
+            case AGENTIC_OPERATIONS -> agenticOperationsUrl();
         };
         return url.map(String::trim).filter(u -> !u.isEmpty()).map(u -> u.endsWith("/") ? u.substring(0, u.length() - 1) : u);
     }

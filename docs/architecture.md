@@ -11,7 +11,8 @@ browser ──https──▶ Route (edge TLS) ──▶ operations-console pod
                                                  ├─▶ inventory-service    (no token while its reads are open)
                                                  ├─▶ fulfillment-adapter  (no token while its reads are open)
                                                  ├─▶ asset-service        (no token; refused, see gaps)
-                                                 └─▶ scenario-controller  (the user's token; box1-docs#19)
+                                                 ├─▶ scenario-controller  (the user's token; box1-docs#19)
+                                                 └─▶ agentic-operations   (the user's token; Assistant, box1-docs#101)
 browser ──https──▶ Keycloak (login only)
 ```
 
@@ -35,6 +36,7 @@ browser ──https──▶ Keycloak (login only)
 - **Content Security Policy.** `default-src 'self'`, with no inline script. `style-src` additionally allows exactly one stylesheet by hash: react-aria-components' `react-aria-pressable-style`, a `touch-action` rule. The Firefox e2e fails on any CSP violation, so a dependency update that changes the hash is caught.
 - **Token forwarding.** The user's access token stays in the session and is **not forwarded** to any upstream (`CONSOLE_FORWARD_USER_TOKEN=false`). The client is public, so any realm user can hold its tokens. It must therefore carry no other service's audience, and the upstreams' reads are open today. Forwarding needs a client whose tokens are meant for those services, which is a user decision.
 - **The one exception: the scenario controller** (box1-docs#19, user decision 2026-11-06). With `CONSOLE_SCENARIO_FORWARD_TOKEN=true` the user's access token is sent to the scenario controller and to no other upstream. The `operations-console` Keycloak client adds the audience `scenario-controller` and maps the controller's `scenario-viewer`/`scenario-operator` roles into the token, and the controller accepts `azp=operations-console`. Each person's own scenario role decides what they may do, and the controller's audit names the person (subject and username). Trade-off, accepted: any realm user who signs in to the console holds a token with that audience, but without a scenario role the controller refuses every call (403), the same as for its CLI client.
+- **Second exception: agentic-operations, for the Assistant** (box1-docs#101, user decision 2026-11-06). With `CONSOLE_AIOPS_FORWARD_TOKEN=true` the user's token is sent to agentic-operations and to no other upstream. The `operations-console` Keycloak client adds the audience `agentic-operations` and maps only `aiops-viewer` and `aiops-analyst`; agentic-operations accepts `azp=operations-console` (`AIOPS_ALLOWED_AZP`), checks the person's own aiops role in its service layer, and its audit names the person. The same trade-off as for the scenario controller applies: a token without an aiops role is refused (403).
 - **Session key.** Without `CONSOLE_SESSION_KEY`, the key is generated per process. Restarts sign users out (observed locally: 200 before, 401 after), and only one replica works. A Secret-backed key is a new secret and needs approval.
 
 ## Roles
@@ -60,10 +62,12 @@ Client roles `console-viewer`, `console-operator` and `console-developer` live o
 | fulfillment-adapter | `GET /api/fulfillments/{id}` | none (forwarding off) |
 | asset-service | `GET /api/v1/alerts` (access probe, cached 60 s) | none |
 | scenario-controller | catalog, runs, run, audit, fixtures; seed, start, stop, reset, confirm (actions with a 45 s timeout, `X-Correlation-Id`) | the user's token (`CONSOLE_SCENARIO_FORWARD_TOKEN`) |
+| agentic-operations | `POST /api/v1/ai/incidents/{incidentId}/analyze` (10 s timeout, `X-Correlation-Id`), `GET /api/v1/ai/analyses/{analysisId}` | the user's token (`CONSOLE_AIOPS_FORWARD_TOKEN`) |
 | all | `/api/info` (revisions, cached 60 s) | none |
 
 - **Create semantics.** A create that times out or meets a 5xx returns 503: the order may or may not exist. The page then locks the form to the same values and key, and keeps them in the tab's `sessionStorage` (never a token), so any retry replays rather than duplicates. An upstream 4xx returns 502 `UPSTREAM_REFUSED`, because retrying will not help.
 - **Scenario actions.** Console roles gate the page (`console-viewer` reads, `console-operator` acts); the controller then checks the person's scenario role. Its 4xx `detail` is shown as written (409 `SCENARIO_CONFLICT`, for example "another run is active"; 403 `SCENARIO_ROLE_REQUIRED`). A timeout or 5xx is 503 with "the outcome is unknown: check the run list"; nothing is retried. The Demo page shows the "Your step" callout only while a run is `AWAITING_OPERATOR`, and offers "I have done this" only for steps the controller asks to be confirmed.
+- **Assistant** (box1-docs#101, decision: console-only). The Assistant page is a deterministic command chat (`help`, `incidents`, `analyze <inc_ord_…|ord_…>`, `show <ana_…>`, `clear`). The console runs no model and answers no free-form questions. It starts an analysis in agentic-operations (box1-docs#20) and polls it every 2 s for at most 3 minutes. Every final status is shown in plain words: `MODEL_UNAVAILABLE`, `MODEL_INVALID_OUTPUT` and `FAILED` say there is no diagnosis, `DEGRADED` warns that core evidence is missing, and an expired or unknown ID is 404 `ANALYSIS_EXPIRED` and is never regenerated. A full model queue is 429 `ASSISTANT_BUSY` with `Retry-After`. The console passes on only the fields it shows: the evidence entries' raw `data` is dropped, and each suggested action is labelled "Proposed only — never executed" with `executed: false`. No console endpoint executes anything. All analysis text is rendered as text; only `https:` evidence links are clickable. The transcript lives in the tab's `sessionStorage`, holding analysis IDs, never results or tokens.
 - **Order service as the only source.** When order-service fails, the overview reports its indicators as absent (null), not zero. Order detail returns 503 naming the source.
 
 - Upstream calls have no retries. At most 8 are in flight per upstream, and excess calls fail fast as `DEGRADED`.

@@ -27,6 +27,7 @@ QUARKUS_OIDC_AUTHENTICATION_FORCE_REDIRECT_HTTPS_SCHEME=false QUARKUS_OIDC_AUTHE
 CONSOLE_PUBLIC_ORIGIN=http://localhost:18080 CONSOLE_ENVIRONMENT=local-e2e CONSOLE_FULFILLMENT_LINK=derived CONSOLE_STUCK_THRESHOLD=1m \
 ORDER_SERVICE_URL=http://127.0.0.1:18081/order INVENTORY_SERVICE_URL=http://127.0.0.1:18081/inventory \
 FULFILLMENT_ADAPTER_URL=http://127.0.0.1:18081/fulfillment ASSET_SERVICE_URL=http://127.0.0.1:18081/asset \
+AGENTIC_OPERATIONS_URL=http://127.0.0.1:18081/aiops CONSOLE_AIOPS_FORWARD_TOKEN=true \
 QUARKUS_LOG_CONSOLE_JSON_ENABLED=true \
   java -jar "$ROOT/target/quarkus-app/quarkus-run.jar" > "$RUN_DIR/console.log" 2>&1 & echo $! > "$RUN_DIR/console.pid"
 for i in $(seq 1 60); do curl -sf http://localhost:18080/q/health/ready >/dev/null && break; sleep 1; done

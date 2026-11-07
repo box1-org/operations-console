@@ -37,8 +37,30 @@
             "access.token.claim": "true",
             "id.token.claim": "false"
           }
+        },
+        {
+          "name": "agentic-operations-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "agentic-operations",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
         }
       ]
+    },
+    {
+      "clientId": "agentic-operations",
+      "name": "box1 agentic operations (local e2e copy; box1-docs#20)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false
     }
   ],
   "roles": {
@@ -55,6 +77,16 @@
         {
           "name": "console-developer",
           "description": "Viewer, plus delivery revisions"
+        }
+      ],
+      "agentic-operations": [
+        {
+          "name": "aiops-viewer",
+          "description": "Read evidence and analyses"
+        },
+        {
+          "name": "aiops-analyst",
+          "description": "aiops-viewer, plus start analyses"
         }
       ]
     }
@@ -77,6 +109,9 @@
       "clientRoles": {
         "operations-console": [
           "console-viewer"
+        ],
+        "agentic-operations": [
+          "aiops-viewer"
         ]
       }
     },
@@ -98,6 +133,9 @@
         "operations-console": [
           "console-operator",
           "console-viewer"
+        ],
+        "agentic-operations": [
+          "aiops-analyst"
         ]
       }
     },
@@ -136,5 +174,16 @@
         }
       ]
     }
-  ]
+  ],
+  "clientScopeMappings": {
+    "agentic-operations": [
+      {
+        "client": "operations-console",
+        "roles": [
+          "aiops-viewer",
+          "aiops-analyst"
+        ]
+      }
+    ]
+  }
 }

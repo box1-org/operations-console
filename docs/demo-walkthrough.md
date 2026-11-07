@@ -34,6 +34,15 @@ The screenshots below are from the local e2e stack (real Keycloak login, stubbed
 5. **Recover.** The operator releases the hold and the ERP ships. The console shows "Shipped" from the adapter, but marks the order complete only after the order service reports it.
    ![Completed](screenshots/05-completed.png)
 
+## Ask the assistant
+
+The Assistant (box1-docs#101) needs `aiops-analyst` on agentic-operations. Use it with an active incident, for example one from `erp-delayed-processing`.
+
+1. Open the incident and choose **Ask the assistant to analyze this incident**, or open **Assistant** and type `incidents`, then **Analyze**.
+2. The analysis is queued and then running. When it completes, the Assistant shows the summary, findings with their cited evidence (`ev_N`), what is not known, and the evidence list with each source's retrieval status.
+3. Suggested actions appear under **Proposed only — never executed**. Nothing on the page can carry them out.
+   ![Assistant](screenshots/20-assistant-analysis.png)
+
 ## Failure views
 
 - When the fulfillment adapter is unreachable, the page shows **ERP detail unavailable** next to the order service's state.

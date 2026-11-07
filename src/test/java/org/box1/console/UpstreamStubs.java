@@ -22,6 +22,8 @@ public class UpstreamStubs implements QuarkusTestResourceLifecycleManager {
             Map.entry("console.upstream.asset-service-url", base + "/asset"),
             Map.entry("console.upstream.scenario-controller-url", base + "/scenario"),
             Map.entry("console.upstream.scenario-controller-forward-token", "true"),
+            Map.entry("console.upstream.agentic-operations-url", base + "/aiops"),
+            Map.entry("console.upstream.agentic-operations-forward-token", "true"),
             Map.entry("console.fulfillment-link", "derived"),
             Map.entry("console.upstream.read-timeout", "800ms"),
             Map.entry("console.upstream.page-budget", "1500ms"),

@@ -13,7 +13,7 @@ test('automated accessibility scan (WCAG 2.1 A/AA) on every page and state, ligh
   const id = (await r.json()).order.orderId;
   await stub(request, { advance: { orderId: id, to: 'EXCEPTION', reasonCode: 'RESERVATION_EXPIRED', eventType: 'inventory.reservation-expired.v1' } });
   const failures: string[] = [];
-  const paths = ['/', '/orders', '/orders/new', `/orders/${id}`, '/incidents', `/incidents/inc_${id}`, '/sites', '/delivery', '/demo', '/nope'];
+  const paths = ['/', '/orders', '/orders/new', `/orders/${id}`, '/incidents', `/incidents/inc_${id}`, '/sites', '/delivery', '/demo', '/assistant', '/nope'];
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     for (const path of paths) {

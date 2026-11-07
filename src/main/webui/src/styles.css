@@ -148,3 +148,22 @@ input, select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--i
 h2.inline { display: inline; font-size: 1.25rem; }
 details { margin: 1rem 0; }
 summary { cursor: pointer; }
+
+/* Assistant (box1-docs#101) */
+.chat-log { display: flex; flex-direction: column; gap: 0.75rem; background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1rem; margin: 0 0 1rem; min-height: 12rem; max-height: 65vh; overflow-y: auto; }
+.chat-msg { max-width: 100%; min-width: 0; }
+.chat-msg p { margin: 0.25rem 0; }
+.chat-you { align-self: flex-end; max-width: 80%; background: var(--waiting-bg); color: var(--waiting-ink); border-radius: 4px; padding: 0.35rem 0.75rem; }
+.chat-bot { align-self: stretch; border-left: 3px solid var(--steel); padding-left: 0.75rem; }
+.chat-help ul, .chat-incidents { margin: 0.25rem 0; padding-left: 1.25rem; }
+.chat-incidents li { margin: 0.35rem 0; }
+.chat-input { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.chat-input input { flex: 1 1 18rem; }
+.analysis h3 { font-size: 1rem; margin: 0.75rem 0 0.25rem; }
+.analysis-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.analysis-summary { font-weight: 600; }
+.findings li, .proposals li, .evidence-list li { margin: 0.35rem 0; }
+.proposals h3 { margin-top: 0; }
+.evidence-list { padding-left: 1.25rem; }
+.evidence-list li:target, .evidence-list li:focus { outline: 2px solid var(--focus); outline-offset: 2px; }

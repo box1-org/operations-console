@@ -345,6 +345,58 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/ScenarioConflict" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/assistant:
+    get:
+      tags: [console]
+      operationId: getAssistantStatus
+      summary: Whether the Assistant is connected to agentic-operations and what this person may do there (any console role)
+      description: canView and canAnalyze come from the person's own aiops-viewer/aiops-analyst roles; agentic-operations enforces them (box1-docs#101).
+      responses:
+        "200":
+          description: The Assistant's status for this person
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/assistant/incidents/{incidentId}/analyses:
+    post:
+      tags: [console]
+      operationId: startIncidentAnalysis
+      summary: Ask agentic-operations to analyze an incident; poll the returned analysis (any console role, plus aiops-analyst on agentic-operations)
+      description: Starts an evidence-grounded analysis with the person's own token. Suggested actions in the result are proposals only; nothing is executed.
+      parameters: [{ $ref: "#/components/parameters/AnalysisIncidentId" }]
+      requestBody: { $ref: "#/components/requestBodies/Empty" }
+      responses:
+        "202":
+          description: Queued; poll GET /api/v1/assistant/analyses/{analysisId}
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalysisSubmitted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/AssistantBusy" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/assistant/analyses/{analysisId}:
+    get:
+      tags: [console]
+      operationId: getIncidentAnalysis
+      summary: Read an analysis from agentic-operations (any console role, plus aiops-viewer or aiops-analyst on agentic-operations)
+      description: A 404 with code ANALYSIS_EXPIRED means the analysis expired, was evicted, or was lost on restart; it is never regenerated.
+      parameters: [{ $ref: "#/components/parameters/AnalysisId" }]
+      responses:
+        "200":
+          description: The analysis; poll while finished is false
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Analysis" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 components:
   parameters:
     OrderId:
@@ -362,6 +414,17 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: "^scn_[0-9a-f]{20}$" }
+    AnalysisIncidentId:
+      name: incidentId
+      in: path
+      required: true
+      description: An order incident, inc_<orderId>
+      schema: { type: string, pattern: "^inc_ord_[A-Za-z0-9_-]{1,76}$" }
+    AnalysisId:
+      name: analysisId
+      in: path
+      required: true
+      schema: { type: string, pattern: "^ana_[0-9a-f]{32}$" }
   requestBodies:
     Empty:
       required: true
@@ -394,6 +457,11 @@ components:
     Unavailable:
       description: The authoritative source for this resource did not answer (for a create, the outcome is unknown)
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    AssistantBusy:
+      description: agentic-operations' model queue is full; try again after Retry-After seconds
+      headers:
+        Retry-After: { schema: { type: integer } }
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
   schemas:
     Problem:
       type: object
@@ -408,7 +476,7 @@ components:
         source: { $ref: "#/components/schemas/SourceName" }
     SourceName:
       type: string
-      enum: [order-service, inventory-service, fulfillment-adapter, asset-service, scenario-controller]
+      enum: [order-service, inventory-service, fulfillment-adapter, asset-service, scenario-controller, agentic-operations]
     SourceStatus:
       type: object
       description: How one upstream answered while building this response (#17 calls this sourceStatus)
@@ -789,3 +857,83 @@ components:
         resetId: { type: [string, "null"] }
         resetResult: { type: [string, "null"] }
         resetDetail: { type: [string, "null"] }
+    AssistantStatus:
+      type: object
+      required: [configured, canView, canAnalyze, roles]
+      properties:
+        configured: { type: boolean, description: "The console is connected to agentic-operations" }
+        canView: { type: boolean, description: "The person holds aiops-viewer or aiops-analyst" }
+        canAnalyze: { type: boolean, description: "The person holds aiops-analyst" }
+        roles: { type: array, items: { type: string, enum: [aiops-viewer, aiops-analyst] } }
+    AnalysisSubmitted:
+      type: object
+      required: [analysisId, incidentId]
+      properties:
+        analysisId: { type: string }
+        incidentId: { type: string }
+        status: { type: [string, "null"] }
+    AnalysisStatus:
+      type: string
+      description: QUEUED and RUNNING are in progress; every other status is final. Only COMPLETED and DEGRADED carry a diagnosis.
+      enum: [QUEUED, RUNNING, COMPLETED, DEGRADED, MODEL_UNAVAILABLE, MODEL_INVALID_OUTPUT, FAILED]
+    AnalysisFinding:
+      type: object
+      required: [statement, evidenceRefs]
+      properties:
+        statement: { type: string }
+        evidenceRefs: { type: array, items: { type: string } }
+        confidence: { type: [string, "null"], description: "LOW, MEDIUM or HIGH" }
+    AnalysisSuggestedAction:
+      type: object
+      required: [type, executed]
+      description: A proposal only. Neither agentic-operations nor the console executes it.
+      properties:
+        type: { type: string }
+        description: { type: [string, "null"] }
+        expectedEffect: { type: [string, "null"] }
+        rollback: { type: [string, "null"] }
+        executed: { type: boolean, const: false }
+    AnalysisEvidence:
+      type: object
+      required: [ref, truncated]
+      properties:
+        ref: { type: string }
+        type: { type: [string, "null"] }
+        source: { type: [string, "null"] }
+        timestamp: { type: [string, "null"], format: date-time }
+        retrievedAt: { type: [string, "null"], format: date-time }
+        retrievalStatus: { type: [string, "null"], description: "OK, UNAVAILABLE, NOT_FOUND, UNAUTHORIZED, ERROR, TIMEOUT, UNREACHABLE or CONFLICTING" }
+        detail: { type: [string, "null"] }
+        link: { type: [string, "null"], description: "A trusted identifier built by agentic-operations, e.g. source plus ID" }
+        truncated: { type: boolean }
+    Analysis:
+      type: object
+      required: [analysisId, status, finished, findings, unknowns, suggestedActions, evidence]
+      properties:
+        analysisId: { type: string }
+        incidentId: { type: [string, "null"] }
+        orderId: { type: [string, "null"] }
+        incidentType: { type: [string, "null"] }
+        status: { $ref: "#/components/schemas/AnalysisStatus" }
+        finished: { type: boolean }
+        statusDetail: { type: [string, "null"] }
+        createdAt: { type: [string, "null"], format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+        summary: { type: [string, "null"] }
+        findings: { type: array, items: { $ref: "#/components/schemas/AnalysisFinding" } }
+        unknowns: { type: array, items: { type: string } }
+        suggestedActions: { type: array, items: { $ref: "#/components/schemas/AnalysisSuggestedAction" } }
+        evidence: { type: array, items: { $ref: "#/components/schemas/AnalysisEvidence" } }
+        model:
+          type: [object, "null"]
+          properties:
+            modelId: { type: [string, "null"] }
+            contextProfile: { type: [string, "null"] }
+            promptTokens: { type: [integer, "null"] }
+            completionTokens: { type: [integer, "null"] }
+        quality:
+          type: [object, "null"]
+          properties:
+            citedFindings: { type: integer }
+            unsupportedAssertions: { type: integer }
+            droppedActions: { type: integer }
