@@ -73,7 +73,7 @@ Client roles `console-viewer`, `console-operator` and `console-developer` live o
 - Upstream calls have no retries. At most 8 are in flight per upstream, and excess calls fail fast as `DEGRADED`.
 - Each call carries a W3C `traceparent`. The browser starts a trace per request and the backend continues it (box1-docs#22).
 - The order's **Trace** evidence links to the OpenShift console trace viewer (Observe > Traces, `box1-observability/box1`, tenant `dev`) through `CONSOLE_TRACE_URL_TEMPLATE`, with `{traceId}` replaced by the order's W3C trace ID. Opening it needs OpenShift access. An empty template, or a missing or all-zero trace ID, shows the ID without a link.
-- The order's **Logs** evidence links to the OpenShift console log viewer (Observe > Logs) through `CONSOLE_LOGS_URL_TEMPLATE`: a LogQL query for application logs from every service whose JSON MDC carries the order's trace ID (`structured_mdc_traceId`), one line per entry as pod, level and message. The same trace-ID rules and OpenShift-access requirement as the trace link apply. The fulfillment dashboard remains a placeholder.
+- The order's **Logs** evidence links to the OpenShift console log viewer (Observe > Logs) through `CONSOLE_LOGS_URL_TEMPLATE`: a LogQL query for application logs from every service whose JSON MDC carries the order's trace ID (`structured_mdc_traceId`), one line per entry as pod, level and message. The same trace-ID rules and OpenShift-access requirement as the trace link apply. The **Order flow dashboard** evidence links to the `box1-order-flow` dashboard in `box1-observability` (Observe > Dashboards) through `CONSOLE_DASHBOARD_URL`; it is the same for every order. Empty removes the link.
 - Logs are JSON and never include tokens, cookies or bodies.
 
 ## ERP progress

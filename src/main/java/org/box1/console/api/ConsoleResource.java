@@ -369,10 +369,11 @@ public class ConsoleResource {
 
         UpstreamResponse<UpInfo> info = Fanout.await(infoF, deadline, new UpstreamResponse<>(0, null, null, late(Source.ORDER_SERVICE)));
         List<Views.EvidenceLink> evidence = new ArrayList<>();
-        String noBackend = "No dashboard backend is deployed yet (box1-docs#22). Use the IDs in the timeline.";
         evidence.add(traceEvidence(order.traceId()));
         evidence.add(logsEvidence(order.traceId()));
-        evidence.add(new Views.EvidenceLink("dashboard", "Fulfillment dashboard", false, null, noBackend));
+        Optional<String> dashboard = reads.settings().dashboardUrl().map(String::strip).filter(u -> !u.isEmpty());
+        evidence.add(new Views.EvidenceLink("dashboard", "Order flow dashboard", dashboard.isPresent(), dashboard.orElse(null),
+            dashboard.isPresent() ? null : "No dashboard is configured. Use the IDs in the timeline."));
         String ref = info.ok() ? info.body().gitRef() : null;
         String url = commitUrl("order-service", ref);
         evidence.add(new Views.EvidenceLink("source-revision", "order-service " + (ref == null ? "revision unknown" : shortRef(ref)),
