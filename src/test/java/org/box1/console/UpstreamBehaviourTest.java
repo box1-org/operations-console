@@ -57,6 +57,13 @@ class UpstreamBehaviourTest {
             .body("evidence.find { it.kind == 'trace' }.available", is(true))
             .body("evidence.find { it.kind == 'trace' }.href", is("https://console-openshift-console.apps.ocp.box1.org/observe/traces/"
                 + "0af7651916cd43dd8448eb211c80319c?namespace=box1-observability&name=box1&tenant=dev"))
+            .body("evidence.find { it.kind == 'logs' }.available", is(true))
+            .body("evidence.find { it.kind == 'logs' }.href", is("https://console-openshift-console.apps.ocp.box1.org/monitoring/logs?q="
+                + "%7B+log_type%3D%22application%22+%7D+%7C+json+%7C+structured_mdc_traceId%3D%220af7651916cd43dd8448eb211c80319c%22"
+                + "+%7C+line_format+%22%7B%7Bprintf+%5C%22%25-45s%5C%22+.kubernetes_pod_name%7D%7D+%7B%7B.structured_level%7D%7D"
+                + "+%7B%7B.structured_message%7D%7D%22&showResources=0&showStats=0"))
+            .body("evidence.find { it.kind == 'dashboard' }.href", is("https://console-openshift-console.apps.ocp.box1.org/monitoring/v2/"
+                + "dashboards/view?dashboard=box1-order-flow&project=box1-observability&refresh=30s"))
             .body("sources.find { it.source == 'fulfillment-adapter' }.status", is("OK"));
     }
 

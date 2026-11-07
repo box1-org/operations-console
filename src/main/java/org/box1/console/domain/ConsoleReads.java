@@ -77,6 +77,15 @@ public class ConsoleReads {
         Optional<String> traceUrlTemplate();
 
         /**
+         * The log viewer link, with {@code {traceId}} replaced by a W3C trace ID (box1-docs#22): application logs from
+         * every service for that trace. Empty means no log backend: the evidence then has no logs link.
+         */
+        Optional<String> logsUrlTemplate();
+
+        /** The order flow dashboard (box1-docs#22), the same for every order. Empty means no dashboard link. */
+        Optional<String> dashboardUrl();
+
+        /**
          * Whether the signed-in user's access token is forwarded to upstreams. Off by default (security review SEC-1,
          * SEC-3): the public client carries no extra audiences, and every upstream the console reads accepts anonymous
          * reads today. Turning it on needs a client whose tokens are meant for those services (user decision O-9).
