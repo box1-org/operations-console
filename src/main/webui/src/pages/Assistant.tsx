@@ -69,8 +69,10 @@ export function Assistant() {
   const autoStarted = useRef(false);
   const end = useRef<HTMLDivElement>(null);
 
-  useEffect(() => saveTranscript(storageKey, messages), [storageKey, messages]);
-  useEffect(() => end.current?.scrollIntoView?.({ block: 'nearest' }), [messages.length]);
+  // Effects must return nothing: Chromium's scrollIntoView returns a Promise, which React would later call as a
+  // cleanup function and crash on (found live, box1-docs#101).
+  useEffect(() => { saveTranscript(storageKey, messages); }, [storageKey, messages]);
+  useEffect(() => { end.current?.scrollIntoView?.({ block: 'nearest' }); }, [messages.length]);
 
   const add = useCallback((...entries: (NewBotMessage | { from: 'you'; text: string })[]) => {
     setMessages((m) => [...m, ...entries.map((e) => ({ from: 'bot', ...e, id: nextId.current++ }) as Message)].slice(-MAX_MESSAGES));
