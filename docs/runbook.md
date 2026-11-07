@@ -34,6 +34,11 @@
 | Page loads return 500, `/api/v1/*` returns 401, logs show `OidcProviderClientImpl` errors | Keycloak is unreachable (discovery or token endpoint) | Check Keycloak. Readiness stays UP by design: the console cannot help without it, and restarting does not help |
 | One failed login during a rollout | `maxSurge: 1` runs old and new pods briefly, each with its own session key | Sign in again |
 | Sites shows "refused the console" | Gap G-2 | Expected |
+| Assistant: "The assistant is not connected" | `AGENTIC_OPERATIONS_URL` or `CONSOLE_AIOPS_FORWARD_TOKEN` is unset | Set both in box1-workloads-dev |
+| Assistant: 403 `AIOPS_ROLE_REQUIRED` | agentic-operations refused the person: no `aiops-viewer`/`aiops-analyst` role, or `operations-console` is missing from its `AIOPS_ALLOWED_AZP`, or the console client lacks the audience/scope mapping | Assign the role in Keycloak; check `AIOPS_ALLOWED_AZP` and the `operations-console` KeycloakClient |
+| Assistant: 429 `ASSISTANT_BUSY` | agentic-operations' model queue is full (one vLLM slot, queue bound 4) | Wait for `Retry-After` and try again |
+| Assistant: `MODEL_UNAVAILABLE` | vLLM did not answer; no diagnosis was produced | Check vLLM (box1-docs#26) and agentic-operations' runbook |
+| Assistant: 404 `ANALYSIS_EXPIRED` | The analysis expired (24 h), was evicted, or agentic-operations restarted | Expected; start a new analysis |
 
 ## Rollback
 

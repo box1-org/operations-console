@@ -132,4 +132,34 @@ public final class Views {
 
     public record ResetResult(String scenarioRunId, String resetId, String resetResult, String resetDetail) {
     }
+
+    /** What the Assistant can do for this person (box1-docs#101); agentic-operations still enforces the roles. */
+    public record AssistantStatus(boolean configured, boolean canView, boolean canAnalyze, List<String> roles) {
+    }
+
+    public record AnalysisSubmitted(String analysisId, String incidentId, String status) {
+    }
+
+    public record Finding(String statement, List<String> evidenceRefs, String confidence) {
+    }
+
+    /** {@code executed} is always false: suggestions are proposals only and the console cannot execute them. */
+    public record SuggestedAction(String type, String description, String expectedEffect, String rollback, boolean executed) {
+    }
+
+    public record Evidence(String ref, String type, String source, Instant timestamp, Instant retrievedAt,
+        String retrievalStatus, String detail, String link, boolean truncated) {
+    }
+
+    public record ModelInfo(String modelId, String contextProfile, Integer promptTokens, Integer completionTokens) {
+    }
+
+    public record AnalysisQuality(int citedFindings, int unsupportedAssertions, int droppedActions) {
+    }
+
+    public record Analysis(String analysisId, String incidentId, String orderId, String incidentType, String status,
+        boolean finished, String statusDetail, Instant createdAt, Instant completedAt, String summary, List<Finding> findings,
+        List<String> unknowns, List<SuggestedAction> suggestedActions, List<Evidence> evidence, ModelInfo model,
+        AnalysisQuality quality) {
+    }
 }

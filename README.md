@@ -26,6 +26,7 @@ Roles are client roles on the Keycloak client `operations-console`. The backend 
 | Sites & assets | `/sites` | viewer |
 | Delivery (deployed revisions) | `/delivery` | `console-developer` |
 | Demo control: scenario catalog, seed, start/stop/reset, live run, audit (box1-docs#19) | `/demo` | viewer; actions need operator here and `scenario-operator` on the scenario controller |
+| Assistant: chat over agentic-operations incident analysis (box1-docs#101) | `/assistant` | viewer; reading analyses needs `aiops-viewer` and starting one `aiops-analyst` on agentic-operations |
 
 ## Build and test
 
@@ -56,10 +57,11 @@ These settings are deployment environment variables. Defaults are in `applicatio
 | `CONSOLE_OIDC_CLIENT_ID` | Keycloak client | `operations-console` |
 | `CONSOLE_PUBLIC_ORIGIN` | The console's public https origin (CORS and CSRF origin check) | `https://operations-console-dev.apps.ocp.box1.org` |
 | `CONSOLE_SESSION_KEY` | Session-cookie encryption key, from a Secret. **Unset by default:** each pod generates one, so restarts sign users out and only one replica works | unset |
-| `ORDER_SERVICE_URL`, `INVENTORY_SERVICE_URL`, `FULFILLMENT_ADAPTER_URL`, `ASSET_SERVICE_URL`, `SCENARIO_CONTROLLER_URL` | In-cluster upstream base URLs. When one is empty, that source is reported "not connected" | unset |
+| `ORDER_SERVICE_URL`, `INVENTORY_SERVICE_URL`, `FULFILLMENT_ADAPTER_URL`, `ASSET_SERVICE_URL`, `SCENARIO_CONTROLLER_URL`, `AGENTIC_OPERATIONS_URL` | In-cluster upstream base URLs. When one is empty, that source is reported "not connected" | unset |
 | `CONSOLE_FULFILLMENT_LINK` | `derived` uses order-service's internal `ord_x → ful_x` convention to find ERP status; `none` shows "ERP detail unavailable" | `none` |
 | `CONSOLE_FORWARD_USER_TOKEN` | Forward the user's access token to upstreams. Keep `false` with the public client: its tokens are obtainable by any realm user, so it carries no other service's audience | `false` |
 | `CONSOLE_SCENARIO_FORWARD_TOKEN` | Send the user's token to the scenario controller only (its audience is added by the console's Keycloak client); see docs/architecture.md | `false` |
+| `CONSOLE_AIOPS_FORWARD_TOKEN` | Send the user's token to agentic-operations only, for the Assistant (box1-docs#101). The Assistant reports "not connected" unless this and `AGENTIC_OPERATIONS_URL` are set | `false` |
 | `CONSOLE_STUCK_THRESHOLD` | Time awaiting ERP acknowledgement before an order becomes an incident | `10m` |
 | `CONSOLE_ENVIRONMENT`, `TELEMETRY_CONSOLE_URL` | Shown in the header, and the link target for telemetry | dev values |
 

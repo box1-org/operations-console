@@ -37,6 +37,7 @@ export function Layout() {
           {canView && <li><NavLink to="/orders">Orders</NavLink></li>}
           {canView && <li><NavLink to="/incidents">Incidents</NavLink></li>}
           {canView && <li><NavLink to="/sites">Sites &amp; assets</NavLink></li>}
+          {canView && <li><NavLink to="/assistant">Assistant</NavLink></li>}
           {isDeveloper && <li><NavLink to="/delivery">Delivery</NavLink></li>}
           {canView && <li><NavLink to="/demo">Demo control</NavLink></li>}
         </ul>

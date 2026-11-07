@@ -8,7 +8,8 @@ public enum Source {
     INVENTORY_SERVICE("inventory-service"),
     FULFILLMENT_ADAPTER("fulfillment-adapter"),
     ASSET_SERVICE("asset-service"),
-    SCENARIO_CONTROLLER("scenario-controller");
+    SCENARIO_CONTROLLER("scenario-controller"),
+    AGENTIC_OPERATIONS("agentic-operations");
 
     private final String id;
 

@@ -9,6 +9,7 @@ import java.util.TreeSet;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import org.box1.console.api.AssistantResource;
 import org.box1.console.api.ConsoleResource;
 import org.box1.console.api.ScenarioControlResource;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ class ContractDriftTest {
     @Test
     void implementationMatchesTheVersionedContract() {
         Set<String> implemented = new TreeSet<>();
-        for (Class<?> resource : new Class<?>[]{ConsoleResource.class, ScenarioControlResource.class}) {
+        for (Class<?> resource : new Class<?>[]{ConsoleResource.class, ScenarioControlResource.class, AssistantResource.class}) {
             String base = resource.getAnnotation(Path.class).value();
             for (Method m : resource.getDeclaredMethods()) {
                 String verb = m.isAnnotationPresent(GET.class) ? "GET" : m.isAnnotationPresent(POST.class) ? "POST" : null;

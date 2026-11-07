@@ -11,6 +11,7 @@ import { IncidentDetail, Incidents } from './pages/Incidents';
 import { Sites } from './pages/Sites';
 import { Delivery } from './pages/Delivery';
 import { Demo } from './pages/Demo';
+import { Assistant } from './pages/Assistant';
 import { NotFound } from './pages/NotFound';
 import './styles.css';
 
@@ -27,6 +28,7 @@ const router = createBrowserRouter([
       { path: '/sites', element: <Sites /> },
       { path: '/delivery', element: <Delivery /> },
       { path: '/demo', element: <Demo /> },
+      { path: '/assistant', element: <Assistant /> },
       { path: '*', element: <NotFound /> },
     ],
   },

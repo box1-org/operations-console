@@ -56,6 +56,9 @@ export function IncidentDetail() {
   const { state, reload } = useResource(
     (signal) => api.GET('/api/v1/incidents/{incidentId}/evidence', { params: { path: { incidentId } }, signal }),
     [incidentId], { refreshMs: paused || inactive ? undefined : 5000 });
+  // The Assistant (box1-docs#101) is offered only to people agentic-operations would let start an analysis.
+  const assistant = useResource((signal) => api.GET('/api/v1/assistant', { signal }), []);
+  const canAnalyze = assistant.state.kind === 'ready' && assistant.state.data.configured && assistant.state.data.canAnalyze;
   const nowInactive = state.kind === 'ready' && !state.data.incident.active;
   if (nowInactive !== inactive) setInactive(nowInactive);
   return (
@@ -73,6 +76,10 @@ export function IncidentDetail() {
             <strong>{state.data.incident.active ? 'Active' : 'No active incident'}:</strong> {state.data.incident.title}.
             {' '}Order <Link to={`/orders/${state.data.incident.orderId}`}>{state.data.incident.orderId}</Link>.
           </div>
+          {canAnalyze && /^inc_ord_/.test(incidentId) && (
+            <p><Link className="button" to={`/assistant?incident=${encodeURIComponent(incidentId)}`} data-testid="ask-assistant">
+              Ask the assistant to analyze this incident</Link></p>
+          )}
           <OrderSummaryView summary={state.data.summary} />
         </>
       )}

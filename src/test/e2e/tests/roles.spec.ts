@@ -10,7 +10,8 @@ test('a user without console roles sees forbidden states and the backend refuses
   await expect(page.getByTestId('forbidden')).toBeVisible();
   await shot(page, '08-forbidden-no-role');
   for (const path of ['/api/v1/overview', '/api/v1/orders', '/api/v1/orders/ord_x/summary', '/api/v1/incidents',
-    '/api/v1/incidents/inc_ord_x/evidence', '/api/v1/sites', '/api/v1/delivery', '/api/v1/scenarios']) {
+    '/api/v1/incidents/inc_ord_x/evidence', '/api/v1/sites', '/api/v1/delivery', '/api/v1/scenarios', '/api/v1/assistant',
+    '/api/v1/assistant/analyses/ana_0123456789abcdef0123456789abcdef']) {
     const r = await page.request.get(path);
     expect(r.status(), path).toBe(403);
     expect((await r.json()).code).toBe('ROLE_REQUIRED');

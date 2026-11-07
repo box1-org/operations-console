@@ -97,4 +97,41 @@ public final class Payloads {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record UpReset(String scenarioRunId, String resetId, String resetResult, String resetDetail) {
     }
+
+    /** agentic-operations' answer to POST /api/v1/ai/incidents/{incidentId}/analyze (box1-docs#101). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpAnalysisSubmitted(String analysisId, String status) {
+    }
+
+    /** One finding; every finding cites evidence refs (ev_N) from the same analysis. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpFinding(String statement, List<String> evidenceRefs, String confidence) {
+    }
+
+    /** A proposed action. agentic-operations never executes it; the console has no way to either. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpSuggestedAction(String type, String description, String expectedEffect, String rollback) {
+    }
+
+    /** One evidence entry; {@code data} (untrusted raw evidence) is deliberately not read. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpEvidence(String ref, String type, String source, Instant timestamp, Instant retrievedAt,
+        String retrievalStatus, String detail, String link, Boolean truncated) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpModelInfo(String modelId, String contextProfile, Integer promptTokens, Integer completionTokens) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpQuality(Integer citedFindings, Integer unsupportedAssertions, Integer droppedActions) {
+    }
+
+    /** GET /api/v1/ai/analyses/{analysisId}: only the fields the console shows. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpAnalysis(String analysisId, String incidentId, String orderId, String incidentType, String status,
+        String statusDetail, Instant createdAt, Instant completedAt, String summary, List<UpFinding> findings,
+        List<String> unknowns, List<UpSuggestedAction> suggestedActions, List<UpEvidence> evidence, UpModelInfo model,
+        UpQuality quality) {
+    }
 }
