@@ -369,9 +369,9 @@ public class ConsoleResource {
 
         UpstreamResponse<UpInfo> info = Fanout.await(infoF, deadline, new UpstreamResponse<>(0, null, null, late(Source.ORDER_SERVICE)));
         List<Views.EvidenceLink> evidence = new ArrayList<>();
-        String noBackend = "No log or dashboard backend is deployed yet (box1-docs#22). Use the IDs in the timeline.";
+        String noBackend = "No dashboard backend is deployed yet (box1-docs#22). Use the IDs in the timeline.";
         evidence.add(traceEvidence(order.traceId()));
-        evidence.add(new Views.EvidenceLink("logs", "Order service logs", false, null, noBackend));
+        evidence.add(logsEvidence(order.traceId()));
         evidence.add(new Views.EvidenceLink("dashboard", "Fulfillment dashboard", false, null, noBackend));
         String ref = info.ok() ? info.body().gitRef() : null;
         String url = commitUrl("order-service", ref);
@@ -390,15 +390,26 @@ public class ConsoleResource {
 
     /** The order's trace in the OpenShift trace viewer (box1-docs#22), when a template is set and the ID is valid. */
     private Views.EvidenceLink traceEvidence(String traceId) {
-        String label = "Trace " + Optional.ofNullable(traceId).orElse("(none)");
-        Optional<String> template = reads.settings().traceUrlTemplate().map(String::strip).filter(t -> t.contains("{traceId}"));
+        return traceLink("trace", "Trace " + Optional.ofNullable(traceId).orElse("(none)"),
+            reads.settings().traceUrlTemplate(), "No trace viewer is configured.", traceId);
+    }
+
+    /** Every service's application logs for the order's trace in the OpenShift log viewer (box1-docs#22). */
+    private Views.EvidenceLink logsEvidence(String traceId) {
+        return traceLink("logs", "Logs for this trace (all services)", reads.settings().logsUrlTemplate(),
+            "No log viewer is configured.", traceId);
+    }
+
+    private static Views.EvidenceLink traceLink(String kind, String label, Optional<String> configured, String unconfigured,
+        String traceId) {
+        Optional<String> template = configured.map(String::strip).filter(t -> t.contains("{traceId}"));
         if (template.isEmpty()) {
-            return new Views.EvidenceLink("trace", label, false, null, "No trace viewer is configured. Use the IDs in the timeline.");
+            return new Views.EvidenceLink(kind, label, false, null, unconfigured + " Use the IDs in the timeline.");
         }
         if (traceId == null || !TRACE_ID.matcher(traceId).matches() || traceId.chars().allMatch(c -> c == '0')) {
-            return new Views.EvidenceLink("trace", label, false, null, "The order service reported no valid trace ID.");
+            return new Views.EvidenceLink(kind, label, false, null, "The order service reported no valid trace ID.");
         }
-        return new Views.EvidenceLink("trace", label, true, template.get().replace("{traceId}", traceId), null);
+        return new Views.EvidenceLink(kind, label, true, template.get().replace("{traceId}", traceId), null);
     }
 
     private UpstreamResponse<UpInfo> cachedInfo(Source source) {
