@@ -19,6 +19,9 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class FrontendServingTest {
     static final String MARK_SHA256 = "11ccbb2dc79258163cc516ed398132ad320ebf9870c75da64cb8b6f2919762ea";
+    /** Favicons resized from the mark only (sips -z, user approval 2026-11-06); any edit changes these hashes. */
+    static final String MARK_32_SHA256 = "1692fcb84de678c4cb1538714a86ac92a0d1fd7febcdd270928da3683d9a576e";
+    static final String MARK_180_SHA256 = "53961816074b95f62ef71dd8148029741065ef60c3848b75b1e941103db83f5e";
 
     @Test
     @TestSecurity(user = "vera", roles = "console-viewer")
@@ -47,7 +50,11 @@ class FrontendServingTest {
 
     @Test
     void brandMarkIsTheUnmodifiedProjectAsset() throws Exception {
-        byte[] served = given().get("/brand/box1-mark.png").then().statusCode(200).extract().asByteArray();
-        assertEquals(MARK_SHA256, HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(served)));
+        String[][] files = {{"/brand/box1-mark.png", MARK_SHA256}, {"/brand/box1-mark-32.png", MARK_32_SHA256},
+            {"/brand/box1-mark-180.png", MARK_180_SHA256}};
+        for (String[] f : files) {
+            byte[] served = given().get(f[0]).then().statusCode(200).extract().asByteArray();
+            assertEquals(f[1], HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(served)), f[0]);
+        }
     }
 }

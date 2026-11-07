@@ -56,6 +56,13 @@ class ConsoleSecurityTest {
     }
 
     @Test
+    void anUnreadableSessionCookieAlsoGets401ProblemJson() {
+        // As after a pod restart: the per-pod session key cannot decrypt an old cookie (live finding 2026-11-06).
+        given().redirects().follow(false).cookie("q_session", "not-a-valid-encrypted-session").get("/api/v1/me").then()
+            .statusCode(401).contentType(startsWith("application/problem+json")).body("code", is("SESSION_REQUIRED"));
+    }
+
+    @Test
     void anonymousPageNavigationRedirectsToKeycloak() {
         String stateCookie = given().redirects().follow(false).accept("text/html").get("/orders/ord_1").then().statusCode(302)
             .header("Location", containsString("/realms/quarkus?response_type=code"))
