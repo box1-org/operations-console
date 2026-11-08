@@ -10,7 +10,7 @@ One Golden Path Quarkus service with two parts in one pod:
 - **Console backend:** holds the Keycloak login session and calls the services on the operator's behalf. Access and
   refresh tokens never reach browser JavaScript or storage. It owns no business state.
 
-Owner: `user:default/mike4263`. Quarkus 3.40.1.1, Java 21, Maven 3.9.16, Node 24.22.2 (downloaded and SHA-256-checked by the build).
+Owner: `user:default/mike`. Quarkus 3.40.1.1, Java 21, Maven 3.9.16, Node 24.22.2 (downloaded and SHA-256-checked by the build).
 
 ## Pages and roles
 
