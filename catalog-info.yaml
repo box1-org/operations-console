@@ -40,6 +40,21 @@ spec:
   # system: box1-demo
   providesApis:
     - operations-console-api
+  consumesApis:
+    - order-service-api
+    - inventory-service-api
+    - fulfillment-adapter-api
+    - asset-service-api
+    - scenario-controller-api
+    - agentic-operations-api
+  dependsOn:
+    - component:order-service
+    - component:inventory-service
+    - component:fulfillment-adapter
+    - component:asset-service
+    - component:scenario-controller
+    - component:agentic-operations
+    - resource:keycloak-box1
 ---
 apiVersion: backstage.io/v1alpha1
 kind: API
