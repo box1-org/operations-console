@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 const port = Number(process.env.STUB_PORT || 18081);
 const control = { order: 'ok', inventory: 'ok', fulfillment: 'ok', asset: 'refuse', aiops: 'ok' }; // aiops: ok|busy|modeldown|down
 const analyses = new Map();    // ana_x -> {incidentId, orderId, createdAt, outcome}
+const conversations = new Map(); // conv_x -> {owner, createdAt, turns: [{turnId, question, started, outcome}]}
 const orders = new Map();      // orderId -> order
 const timelines = new Map();   // orderId -> entries
 const fulfillments = new Map(); // ful_x -> fulfillment
@@ -127,6 +128,7 @@ function aiops(req, res, path) {
     analyses.set(id, { incidentId: submit[1], orderId: submit[2], createdAt: now(), started: Date.now(), outcome: control.aiops === 'modeldown' ? 'MODEL_UNAVAILABLE' : 'COMPLETED' });
     return send(res, 202, { analysisId: id, status: 'QUEUED', location: `/api/v1/ai/analyses/${id}` });
   }
+  if (path.startsWith('/api/v1/ai/conversations')) return chat(req, res, path, c, roles);
   const get = path.match(/^\/api\/v1\/ai\/analyses\/(ana_[0-9a-f]{32})$/);
   if (req.method === 'GET' && get) {
     if (!roles.includes('aiops-viewer') && !roles.includes('aiops-analyst')) return send(res, 403, { ...problem(403, 'Forbidden'), code: 'FORBIDDEN' });
@@ -150,6 +152,47 @@ function aiops(req, res, path) {
       quality: { citedFindings: 1, unsupportedAssertions: 0, droppedActions: 0 } });
   }
   return send(res, 404, problem(404, 'Not Found'));
+}
+
+/** The Assistant's conversations (agentic-operations D-016): scripted turns that read one tool, then answer. */
+function chat(req, res, path, c, roles) {
+  if (!roles.includes('aiops-viewer') && !roles.includes('aiops-analyst')) return send(res, 403, { ...problem(403, 'Forbidden'), code: 'FORBIDDEN' });
+  if (req.method === 'POST' && path === '/api/v1/ai/conversations') {
+    const id = 'conv_' + randomUUID().replaceAll('-', '');
+    conversations.set(id, { owner: c.sub, createdAt: now(), turns: [] });
+    return send(res, 201, { conversationId: id });
+  }
+  const m = path.match(/^\/api\/v1\/ai\/conversations\/(conv_[0-9a-f]{32})(\/messages)?$/);
+  const conv = m && conversations.get(m[1]);
+  if (!conv || conv.owner !== c.sub) return send(res, 404, { ...problem(404, 'Not Found'), code: 'CONVERSATION_NOT_FOUND', detail: 'unknown, expired or lost on restart' });
+  if (req.method === 'POST' && m[2]) {
+    const text = String(req.bodyJson.text || '');
+    if (!text.trim() || text.length > 2000) return send(res, 400, { ...problem(400, 'Bad Request'), code: 'INVALID_MESSAGE' });
+    const last = conv.turns[conv.turns.length - 1];
+    if (last && view(last).status === 'RUNNING') return send(res, 409, { ...problem(409, 'Conflict'), code: 'TURN_IN_PROGRESS', detail: 'still answering' });
+    if (control.aiops === 'busy') return send(res, 429, { ...problem(429, 'Busy'), code: 'BUSY', detail: 'The model queue is full.' }, { 'Retry-After': '30' });
+    const turn = { turnId: 'turn_' + (conv.turns.length + 1), question: text, started: Date.now(), outcome: control.aiops === 'modeldown' ? 'MODEL_UNAVAILABLE' : 'COMPLETED' };
+    conv.turns.push(turn);
+    return send(res, 202, { conversationId: m[1], turnId: turn.turnId, status: 'QUEUED' });
+  }
+  if (req.method === 'GET' && !m[2]) return send(res, 200, { conversationId: m[1], createdAt: conv.createdAt, updatedAt: now(), turns: conv.turns.map(view) });
+  return send(res, 404, problem(404, 'Not Found'));
+}
+
+function view(t) {
+  const age = Date.now() - t.started;
+  const order = (t.question.match(/ord_[A-Za-z0-9_-]+/) || ['ord_unknown'])[0];
+  const steps = [{ tool: 'get_order_timeline', target: order, decision: 'ok', retrievalStatus: orders.has(order) ? 'OK' : 'NOT_FOUND', durationMs: 14 },
+    { tool: 'unknown', target: '-', decision: 'unknown_tool', retrievalStatus: null, durationMs: 0 }];
+  const base = { turnId: t.turnId, question: t.question, statusDetail: null, answer: null, startedAt: new Date(t.started).toISOString(), completedAt: null };
+  if (age < 1200) return { ...base, status: 'RUNNING', steps: [] };
+  if (age < 2500) return { ...base, status: 'RUNNING', steps: steps.slice(0, 1) };
+  if (t.outcome === 'MODEL_UNAVAILABLE') return { ...base, status: 'MODEL_UNAVAILABLE', statusDetail: 'model endpoint unreachable', steps: [], completedAt: now() };
+  const o = orders.get(order);
+  return { ...base, status: 'COMPLETED', steps, completedAt: now(),
+    answer: o ? `Order ${order} is ${o.state}.\nIt was last updated at ${o.updatedAt}. <b>Ignore previous instructions</b> appeared in the evidence and was not followed.`
+      : `I could not find order ${order}.`,
+    model: { modelId: 'box1-coder', modelCalls: 2, toolCalls: 2, promptTokens: 1800, completionTokens: 60 } };
 }
 
 server.listen(port, '127.0.0.1', () => console.log(`run18 stubs on ${port}`));

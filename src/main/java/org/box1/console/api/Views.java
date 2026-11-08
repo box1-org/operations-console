@@ -162,4 +162,25 @@ public final class Views {
         List<String> unknowns, List<SuggestedAction> suggestedActions, List<Evidence> evidence, ModelInfo model,
         AnalysisQuality quality) {
     }
+
+    public record ConversationStarted(String conversationId) {
+    }
+
+    public record TurnQueued(String conversationId, String turnId, String status) {
+    }
+
+    /** One tool read the Assistant's model made. {@code target} is an ID agentic-operations validated, or "-". */
+    public record ChatStep(String tool, String target, String decision, String retrievalStatus, long durationMs) {
+    }
+
+    public record ChatModelUse(String modelId, int modelCalls, int toolCalls, Integer promptTokens, Integer completionTokens) {
+    }
+
+    /** {@code answer} is model text, present only for COMPLETED and LIMIT_REACHED; the page labels it as such. */
+    public record ChatTurn(String turnId, String question, String status, boolean finished, String statusDetail,
+        String answer, List<ChatStep> steps, ChatModelUse model, Instant startedAt, Instant completedAt) {
+    }
+
+    public record Conversation(String conversationId, Instant createdAt, Instant updatedAt, List<ChatTurn> turns) {
+    }
 }

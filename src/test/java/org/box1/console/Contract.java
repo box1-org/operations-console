@@ -17,7 +17,8 @@ final class Contract {
         String concrete() {
             return path.replace("{orderId}", "ord_test1").replace("{incidentId}", "inc_ord_test1")
                 .replace("{name}", "inventory-contention").replace("{scenarioRunId}", "scn_0123456789abcdef0123")
-                .replace("{analysisId}", "ana_0123456789abcdef0123456789abcdef");
+                .replace("{analysisId}", "ana_0123456789abcdef0123456789abcdef")
+                .replace("{conversationId}", "conv_0123456789abcdef0123456789abcdef");
         }
     }
 

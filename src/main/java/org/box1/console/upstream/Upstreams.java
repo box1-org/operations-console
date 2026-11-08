@@ -103,7 +103,7 @@ public class Upstreams {
                 parsed = json.readValue(response.body(), type);
             }
             return record(source, new UpstreamResponse<>(status, parsed, response.headers(), statusFor(source, status, latency),
-                problemDetail(status, response.body())));
+                problemDetail(status, response.body()), problemCode(status, response.body())));
         } catch (HttpConnectTimeoutException connectTimeout) {
             long latency = (System.nanoTime() - start) / 1_000_000;
             return record(source, new UpstreamResponse<>(0, null, null, SourceStatus.of(source, SourceStatus.State.UNAVAILABLE,
@@ -142,6 +142,19 @@ public class Upstreams {
             }
             String text = detail.asText().strip();
             return text.length() > 300 ? text.substring(0, 300) : text;
+        } catch (IOException notJson) {
+            return null;
+        }
+    }
+
+    /** The {@code code} of a 4xx problem body when it looks like a stable code (A-Z, digits, underscore, at most 64). */
+    private String problemCode(int status, byte[] body) {
+        if (status < 400 || status >= 500 || body.length == 0 || body.length > 16_384) {
+            return null;
+        }
+        try {
+            JsonNode code = json.readTree(body).get("code");
+            return code != null && code.isTextual() && code.asText().matches("^[A-Z][A-Z0-9_]{0,63}$") ? code.asText() : null;
         } catch (IOException notJson) {
             return null;
         }

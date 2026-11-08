@@ -38,6 +38,9 @@
 | Assistant: 403 `AIOPS_ROLE_REQUIRED` | agentic-operations refused the person: no `aiops-viewer`/`aiops-analyst` role, or `operations-console` is missing from its `AIOPS_ALLOWED_AZP`, or the console client lacks the audience/scope mapping | Assign the role in Keycloak; check `AIOPS_ALLOWED_AZP` and the `operations-console` KeycloakClient |
 | Assistant: 429 `ASSISTANT_BUSY` | agentic-operations' model queue is full (one vLLM slot, queue bound 4) | Wait for `Retry-After` and try again |
 | Assistant: `MODEL_UNAVAILABLE` | vLLM did not answer; no diagnosis was produced | Check vLLM (box1-docs#26) and agentic-operations' runbook |
+| Assistant: 409 `TURN_IN_PROGRESS` | The previous message in the conversation is still being answered | Wait for it; one message at a time per conversation |
+| Assistant: "The earlier conversation expired, so I started a new one" | 2 h without activity, eviction, or an agentic-operations restart | Expected; the model no longer has the earlier messages |
+| Assistant: an answer looks wrong | Model text; it can be wrong | Check the "Sources consulted" list and the linked pages. The model can only read |
 | Assistant: 404 `ANALYSIS_EXPIRED` | The analysis expired (24 h), was evicted, or agentic-operations restarted | Expected; start a new analysis |
 
 ## Rollback
