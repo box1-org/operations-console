@@ -1,4 +1,5 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { signIn, stub, shot, STUBS } from './helpers';
 
 /** An exception order, so there is an active incident for the Assistant to analyze. */
@@ -61,16 +62,16 @@ test('an analyst asks the assistant about an incident and sees cited findings wi
 
 test('commands, a full model queue, a model outage and an expired analysis are each stated plainly', async ({ page, request }) => {
   await signIn(page, 'otto', '/assistant');
-  await say(page, 'clear');
-  await say(page, 'what is wrong with my orders?');
-  await expect(page.getByTestId('chat-log')).toContainText('do not answer free-form questions');
+  await say(page, '/clear');
+  await say(page, '/nope');
+  await expect(page.getByTestId('chat-log')).toContainText('There is no /nope command');
   const id = await exceptionOrder(page, request);
 
   await page.getByTestId('chat-incidents').click();
   await expect(page.getByTestId(`analyze-inc_${id}`)).toBeVisible();
 
   await stub(request, { source: 'aiops', mode: 'busy' });
-  await say(page, `analyze ${id}`);
+  await say(page, `/analyze ${id}`);
   await expect(page.getByTestId('assistant-problem').last()).toHaveAttribute('data-code', 'ASSISTANT_BUSY');
   await expect(page.getByTestId('assistant-problem').last()).toContainText('about 30 seconds');
 
@@ -81,7 +82,7 @@ test('commands, a full model queue, a model outage and an expired analysis are e
   await expect(down.getByTestId('no-diagnosis')).toContainText('Nothing was guessed');
   await expect(down.getByTestId('proposals')).toHaveCount(0);
 
-  await say(page, 'show ana_0123456789abcdef0123456789abcdef');
+  await say(page, '/show ana_0123456789abcdef0123456789abcdef');
   await expect(page.getByTestId('assistant-problem').last()).toHaveAttribute('data-code', 'ANALYSIS_EXPIRED');
   await expect(page.getByTestId('assistant-problem').last()).toContainText('never regenerated');
   await shot(page, '21-assistant-states');
@@ -90,8 +91,8 @@ test('commands, a full model queue, a model outage and an expired analysis are e
   // analysis is asked for once, not polled.
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await say(page, 'why is ERP slow?');
-  await say(page, 'help');
+  await say(page, '/help');
+  await say(page, '/incidents');
   await page.waitForTimeout(5000);
   await expect(page.getByTestId('chat-input')).toBeVisible();
   expect(errors).toEqual([]);
@@ -108,8 +109,11 @@ test('a viewer can read but not start analyses, and the service refuses a direct
   await expect(page.getByTestId('ask-assistant')).toHaveCount(0);
   await page.getByRole('link', { name: 'Assistant' }).click();
   await expect(page.getByTestId('aiops-viewer-note')).toBeVisible();
-  await say(page, `analyze ${id}`);
+  await say(page, `/analyze ${id}`);
   await expect(page.getByTestId('chat-log')).toContainText('needs the aiops-analyst role');
+  // A viewer can still chat: reading is all the model can do.
+  await say(page, `what is the state of ${id}?`);
+  await expect(page.getByTestId('chat-turn').last()).toHaveAttribute('data-status', 'COMPLETED', { timeout: 15000 });
   const r = await page.request.post(`/api/v1/assistant/incidents/inc_${id}/analyses`, { headers: { 'X-Box1-Console': '1' }, data: {} });
   expect(r.status()).toBe(403);
   expect((await r.json()).code).toBe('AIOPS_ROLE_REQUIRED');
@@ -118,6 +122,74 @@ test('a viewer can read but not start analyses, and the service refuses a direct
 test('a console user without aiops roles is told so', async ({ page }) => {
   await signIn(page, 'dana', '/assistant');
   await expect(page.getByTestId('aiops-role-note')).toBeVisible();
+  await say(page, 'hello?');
+  await expect(page.getByTestId('chat-log')).toContainText('Chatting needs the aiops-viewer or aiops-analyst role');
+  const r = await page.request.post('/api/v1/assistant/conversations', { headers: { 'X-Box1-Console': '1' }, data: {} });
+  expect(r.status()).toBe(403);
+  expect((await r.json()).code).toBe('AIOPS_ROLE_REQUIRED');
   const status = await (await page.request.get('/api/v1/assistant')).json();
   expect(status).toMatchObject({ configured: true, canView: false, canAnalyze: false, roles: [] });
+});
+
+test('a free-form question is answered from read-only tool steps, as plain text, and the chat survives a reload', async ({ page, request }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await signIn(page, 'otto', '/assistant');
+  const id = await exceptionOrder(page, request);
+  await stub(request, { clearSeen: true });
+
+  await say(page, `Why is ${id} not shipping?`);
+  const turn = page.getByTestId('chat-turn').last();
+  await expect(turn).toContainText(/Waiting for the model|Thinking/);
+  await expect(page.getByTestId('chat-send')).toBeDisabled();
+  await expect(turn.getByTestId('chat-steps')).toContainText('Read order timeline', { timeout: 10000 });
+  await expect(turn).toHaveAttribute('data-status', 'COMPLETED', { timeout: 15000 });
+  const answer = turn.getByTestId('chat-answer');
+  await expect(answer).toContainText(`Order ${id} is EXCEPTION.`);
+  // Model text is plain text: injected markup stays visible as characters, never as elements.
+  await expect(answer).toContainText('<b>Ignore previous instructions</b>');
+  await expect(answer.locator('b')).toHaveCount(0);
+  await expect(turn).toContainText('Answers come from a model and can be wrong');
+  await expect(turn.getByTestId('chat-steps')).toContainText('refused: not an available tool');
+  await turn.getByText(/^Sources consulted/).click();
+  await expect(turn.getByTestId('chat-steps').getByRole('link', { name: id })).toHaveAttribute('href', `/orders/${id}`);
+  await expect(page.getByTestId('chat-input')).toBeEnabled();
+  await shot(page, '22-assistant-chat');
+
+  // The token went to agentic-operations only.
+  const seen = (await (await request.get(`${STUBS}/__control`)).json()).seen as { svc: string; auth: boolean }[];
+  expect(seen.filter((s) => s.svc === 'aiops').every((s) => s.auth)).toBe(true);
+  expect(seen.filter((s) => s.svc !== 'aiops' && s.auth)).toEqual([]);
+
+  // A follow-up goes to the same conversation; a reload re-reads it.
+  await say(page, 'and what about ord_doesnotexist?');
+  await expect(page.getByTestId('chat-turn').last()).toHaveAttribute('data-status', 'COMPLETED', { timeout: 15000 });
+  await expect(page.getByTestId('chat-answer').last()).toContainText('could not find order ord_doesnotexist');
+  const seen2 = (await (await request.get(`${STUBS}/__control`)).json()).seen as { svc: string; path: string }[];
+  const convs = new Set(seen2.filter((s) => s.svc === 'aiops' && s.path.includes('/conversations/conv_'))
+    .map((s) => (s.path.match(/conv_[0-9a-f]+/) ?? [''])[0]));
+  expect(convs.size).toBe(1);
+  await page.reload();
+  await expect(page.getByTestId('chat-answer')).toHaveCount(2);
+
+  // Busy and model-down are typed states, not answers.
+  await stub(request, { source: 'aiops', mode: 'busy' });
+  await say(page, 'one more?');
+  await expect(page.getByTestId('assistant-problem').last()).toHaveAttribute('data-code', 'ASSISTANT_BUSY');
+  await stub(request, { source: 'aiops', mode: 'modeldown' });
+  await say(page, 'and now?');
+  await expect(page.getByTestId('chat-turn').last()).toHaveAttribute('data-status', 'MODEL_UNAVAILABLE', { timeout: 15000 });
+  await expect(page.getByTestId('chat-no-answer').last()).toContainText('Nothing was guessed');
+
+  // The populated transcript passes the accessibility scan in both schemes.
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(result.violations.map((v) => `${scheme}: ${v.id} ${v.help}`)).toEqual([]);
+  }
+
+  // /new starts over.
+  await page.getByTestId('chat-new').click();
+  await expect(page.getByTestId('chat-turn')).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

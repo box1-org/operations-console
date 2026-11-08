@@ -134,4 +134,31 @@ public final class Payloads {
         List<String> unknowns, List<UpSuggestedAction> suggestedActions, List<UpEvidence> evidence, UpModelInfo model,
         UpQuality quality) {
     }
+
+    /** agentic-operations' Assistant conversations (box1-docs#101, D-016). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpConversationCreated(String conversationId) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpTurnQueued(String conversationId, String turnId, String status) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpChatStep(String tool, String target, String decision, String retrievalStatus, Long durationMs) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpChatModelUse(String modelId, Integer modelCalls, Integer toolCalls, Integer promptTokens,
+        Integer completionTokens) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpChatTurn(String turnId, String question, String status, String statusDetail, String answer,
+        List<UpChatStep> steps, UpChatModelUse model, Instant startedAt, Instant completedAt) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpConversation(String conversationId, Instant createdAt, Instant updatedAt, List<UpChatTurn> turns) {
+    }
 }

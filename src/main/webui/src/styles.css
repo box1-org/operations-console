@@ -167,3 +167,8 @@ summary { cursor: pointer; }
 .proposals h3 { margin-top: 0; }
 .evidence-list { padding-left: 1.25rem; }
 .evidence-list li:target, .evidence-list li:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.chat-question, .chat-answer { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-answer { margin: 0.5rem 0 0.25rem; }
+.chat-steps { margin: 0.25rem 0; }
+.chat-steps ul { margin: 0.25rem 0; padding-left: 1.25rem; font-size: 0.9rem; }
+.chat-disclaimer { font-size: 0.8rem; }

@@ -212,4 +212,81 @@ class AssistantTest {
         given().get("/api/v1/assistant/analyses/" + ANALYSIS).then().statusCode(403);
         UpstreamStubs.server.verify(getRequestedFor(urlPathMatching("/aiops/.*")).withHeader("Authorization", absent()));
     }
+
+    // ---- chat (box1-docs#101) ----
+
+    private static final String CONV = "conv_0123456789abcdef0123456789abcdef";
+
+    @Test
+    void startingAConversationSendsThePersonsTokenToAgenticOperationsOnly() {
+        UpstreamStubs.server.stubFor(post(urlPathEqualTo("/aiops/api/v1/ai/conversations")).willReturn(aResponse()
+            .withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"conversationId\":\"" + CONV + "\"}")));
+        console().post("/api/v1/assistant/conversations").then().statusCode(201).body("conversationId", is(CONV));
+        UpstreamStubs.server.verify(postRequestedFor(urlPathEqualTo("/aiops/api/v1/ai/conversations"))
+            .withHeader("Authorization", equalTo("Bearer " + TOKEN)));
+    }
+
+    @Test
+    void aQuestionIsPassedOnAndQueued() {
+        UpstreamStubs.server.stubFor(post(urlPathEqualTo("/aiops/api/v1/ai/conversations/" + CONV + "/messages"))
+            .willReturn(aResponse().withStatus(202).withHeader("Content-Type", "application/json")
+                .withBody("{\"conversationId\":\"" + CONV + "\",\"turnId\":\"turn_1\",\"status\":\"QUEUED\"}")));
+        given().header("X-Box1-Console", "1").contentType("application/json").body(Map.of("text", "What is ord_1 doing?"))
+            .post("/api/v1/assistant/conversations/" + CONV + "/messages").then().statusCode(202)
+            .body("turnId", is("turn_1")).body("status", is("QUEUED"));
+        UpstreamStubs.server.verify(postRequestedFor(urlPathEqualTo("/aiops/api/v1/ai/conversations/" + CONV + "/messages"))
+            .withHeader("Authorization", equalTo("Bearer " + TOKEN))
+            .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.equalToJson("{\"text\":\"What is ord_1 doing?\"}")));
+    }
+
+    @Test
+    void questionsAreBoundedBeforeAnyUpstreamCall() {
+        for (String text : new String[] {"", "   ", "x".repeat(2001)}) {
+            given().header("X-Box1-Console", "1").contentType("application/json").body(Map.of("text", text))
+                .post("/api/v1/assistant/conversations/" + CONV + "/messages").then().statusCode(400);
+        }
+        given().header("X-Box1-Console", "1").contentType("application/json").body(Map.of("text", "hi"))
+            .post("/api/v1/assistant/conversations/conv_nothex/messages").then().statusCode(400);
+        UpstreamStubs.server.verify(0, postRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void chatRefusalsAreTyped() {
+        String path = "/aiops/api/v1/ai/conversations/" + CONV + "/messages";
+        RequestSpecification ask = given().header("X-Box1-Console", "1").contentType("application/json").body(Map.of("text", "hi"));
+        UpstreamStubs.server.stubFor(post(urlPathEqualTo(path)).willReturn(aResponse().withStatus(409)
+            .withHeader("Content-Type", "application/problem+json").withBody("{\"code\":\"TURN_IN_PROGRESS\",\"detail\":\"still answering\"}")));
+        ask.post("/api/v1/assistant/conversations/" + CONV + "/messages").then().statusCode(409).body("code", is("TURN_IN_PROGRESS"));
+        UpstreamStubs.server.stubFor(post(urlPathEqualTo(path)).willReturn(aResponse().withStatus(409)
+            .withHeader("Content-Type", "application/problem+json").withBody("{\"code\":\"CONVERSATION_FULL\",\"detail\":\"20 messages\"}")));
+        given().header("X-Box1-Console", "1").contentType("application/json").body(Map.of("text", "hi"))
+            .post("/api/v1/assistant/conversations/" + CONV + "/messages").then().statusCode(409).body("code", is("CONVERSATION_FULL"));
+        UpstreamStubs.server.stubFor(post(urlPathEqualTo(path)).willReturn(aResponse().withStatus(429).withHeader("Retry-After", "30")));
+        given().header("X-Box1-Console", "1").contentType("application/json").body(Map.of("text", "hi"))
+            .post("/api/v1/assistant/conversations/" + CONV + "/messages").then().statusCode(429)
+            .header("Retry-After", "30").body("code", is("ASSISTANT_BUSY"));
+        UpstreamStubs.server.stubFor(post(urlPathEqualTo(path)).willReturn(aResponse().withStatus(404)));
+        given().header("X-Box1-Console", "1").contentType("application/json").body(Map.of("text", "hi"))
+            .post("/api/v1/assistant/conversations/" + CONV + "/messages").then().statusCode(404)
+            .body("code", is("CONVERSATION_EXPIRED"));
+        UpstreamStubs.server.stubFor(get(urlPathEqualTo("/aiops/api/v1/ai/conversations/" + CONV)).willReturn(aResponse().withStatus(403)));
+        given().get("/api/v1/assistant/conversations/" + CONV).then().statusCode(403).body("code", is("AIOPS_ROLE_REQUIRED"));
+    }
+
+    @Test
+    void aConversationShowsAnswersOnlyForAnsweredTurns() {
+        UpstreamStubs.server.stubFor(get(urlPathEqualTo("/aiops/api/v1/ai/conversations/" + CONV)).willReturn(Fixtures.json("""
+            {"conversationId":"%s","createdAt":"2026-11-08T10:00:00Z","turns":[
+             {"turnId":"turn_1","question":"q1","status":"COMPLETED","answer":"ord_1 waits on the ERP",
+              "steps":[{"tool":"get_order_timeline","target":"ord_1","decision":"ok","retrievalStatus":"OK","durationMs":12}],
+              "model":{"modelId":"box1-coder","modelCalls":2,"toolCalls":1,"promptTokens":900,"completionTokens":40}},
+             {"turnId":"turn_2","question":"q2","status":"MODEL_UNAVAILABLE","answer":"should not be shown","steps":[]},
+             {"turnId":"turn_3","question":"q3","status":"RUNNING","steps":[]}]}""".formatted(CONV))));
+        given().get("/api/v1/assistant/conversations/" + CONV).then().statusCode(200)
+            .body("turns[0].answer", is("ord_1 waits on the ERP")).body("turns[0].finished", is(true))
+            .body("turns[0].steps[0].tool", is("get_order_timeline")).body("turns[0].steps[0].target", is("ord_1"))
+            .body("turns[0].model.toolCalls", is(1))
+            .body("turns[1].answer", nullValue()).body("turns[1].finished", is(true))
+            .body("turns[2].finished", is(false));
+    }
 }

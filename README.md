@@ -26,7 +26,7 @@ Roles are client roles on the Keycloak client `operations-console`. The backend 
 | Sites & assets | `/sites` | viewer |
 | Delivery (deployed revisions) | `/delivery` | `console-developer` |
 | Demo control: scenario catalog, seed, start/stop/reset, live run, audit (box1-docs#19) | `/demo` | viewer; actions need operator here and `scenario-operator` on the scenario controller |
-| Assistant: chat over agentic-operations incident analysis (box1-docs#101) | `/assistant` | viewer; reading analyses needs `aiops-viewer` and starting one `aiops-analyst` on agentic-operations |
+| Assistant: chat with agentic-operations' model, which reads box1 through read-only tools; slash commands for incidents and analyses (box1-docs#101) | `/assistant` | viewer; chatting and reading analyses need `aiops-viewer` (or analyst) and starting an analysis `aiops-analyst` on agentic-operations |
 
 ## Build and test
 

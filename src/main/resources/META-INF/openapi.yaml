@@ -397,6 +397,65 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/assistant/conversations:
+    post:
+      tags: [console]
+      operationId: startConversation
+      summary: Start an Assistant conversation in agentic-operations (any console role, plus aiops-viewer or aiops-analyst there)
+      description: The conversation lives in agentic-operations' memory, belongs to you, and is forgotten after 2 hours without activity (box1-docs#101).
+      requestBody: { $ref: "#/components/requestBodies/Empty" }
+      responses:
+        "201":
+          description: Started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationStarted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/assistant/conversations/{conversationId}/messages:
+    post:
+      tags: [console]
+      operationId: sendAssistantMessage
+      summary: Ask the Assistant a question; poll the conversation for the answer
+      description: The model may read evidence through read-only tools under your own roles; it cannot change anything. A 409 TURN_IN_PROGRESS means the previous message is still being answered.
+      parameters: [{ $ref: "#/components/parameters/ConversationId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendMessage" }
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TurnQueued" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/TurnInProgress" }
+        "429": { $ref: "#/components/responses/AssistantBusy" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /api/v1/assistant/conversations/{conversationId}:
+    get:
+      tags: [console]
+      operationId: getConversation
+      summary: Read an Assistant conversation; poll while the last turn is not finished
+      description: A 404 with code CONVERSATION_EXPIRED means it expired, was evicted, or was lost on restart.
+      parameters: [{ $ref: "#/components/parameters/ConversationId" }]
+      responses:
+        "200":
+          description: The conversation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 components:
   parameters:
     OrderId:
@@ -425,6 +484,11 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: "^ana_[0-9a-f]{32}$" }
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema: { type: string, pattern: "^conv_[0-9a-f]{32}$" }
   requestBodies:
     Empty:
       required: true
@@ -456,6 +520,9 @@ components:
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
     Unavailable:
       description: The authoritative source for this resource did not answer (for a create, the outcome is unknown)
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    TurnInProgress:
+      description: The previous message in this conversation is still being answered
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
     AssistantBusy:
       description: agentic-operations' model queue is full; try again after Retry-After seconds
@@ -937,3 +1004,62 @@ components:
             citedFindings: { type: integer }
             unsupportedAssertions: { type: integer }
             droppedActions: { type: integer }
+    ConversationStarted:
+      type: object
+      required: [conversationId]
+      properties:
+        conversationId: { type: string }
+    SendMessage:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text: { type: string, minLength: 1, maxLength: 2000 }
+    TurnQueued:
+      type: object
+      required: [conversationId]
+      properties:
+        conversationId: { type: string }
+        turnId: { type: [string, "null"] }
+        status: { type: [string, "null"] }
+    ChatStep:
+      type: object
+      required: [durationMs]
+      description: One read-only tool call the model made. target is an ID agentic-operations validated, or "-"/"invalid".
+      properties:
+        tool: { type: [string, "null"] }
+        target: { type: [string, "null"] }
+        decision: { type: [string, "null"], description: "ok, invalid_argument, not_found, unknown_tool, limit or error" }
+        retrievalStatus: { type: [string, "null"] }
+        durationMs: { type: integer }
+    ChatTurn:
+      type: object
+      required: [finished, steps]
+      properties:
+        turnId: { type: [string, "null"] }
+        question: { type: [string, "null"] }
+        status:
+          type: [string, "null"]
+          description: QUEUED and RUNNING are in progress. COMPLETED and LIMIT_REACHED carry an answer; MODEL_UNAVAILABLE, MODEL_INVALID_OUTPUT and FAILED do not.
+        finished: { type: boolean }
+        statusDetail: { type: [string, "null"] }
+        answer: { type: [string, "null"], description: "Model text. Render as plain text; it can be wrong." }
+        steps: { type: array, items: { $ref: "#/components/schemas/ChatStep" } }
+        model:
+          type: [object, "null"]
+          properties:
+            modelId: { type: [string, "null"] }
+            modelCalls: { type: integer }
+            toolCalls: { type: integer }
+            promptTokens: { type: [integer, "null"] }
+            completionTokens: { type: [integer, "null"] }
+        startedAt: { type: [string, "null"], format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+    Conversation:
+      type: object
+      required: [conversationId, turns]
+      properties:
+        conversationId: { type: string }
+        createdAt: { type: [string, "null"], format: date-time }
+        updatedAt: { type: [string, "null"], format: date-time }
+        turns: { type: array, items: { $ref: "#/components/schemas/ChatTurn" } }
