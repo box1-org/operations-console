@@ -36,8 +36,7 @@ spec:
   type: service
   lifecycle: experimental
   owner: "user:default/mike"
-  # Add when the corresponding System entity exists:
-  # system: box1-demo
+  system: box1-operations
   providesApis:
     - operations-console-api
   consumesApis:
@@ -66,5 +65,6 @@ spec:
   type: openapi
   lifecycle: experimental
   owner: "user:default/mike"
+  system: box1-operations
   definition:
     $text: https://operations-console-dev.apps.ocp.box1.org/q/openapi
