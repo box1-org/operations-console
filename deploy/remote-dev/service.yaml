@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: operations-console-remote-dev
+spec:
+  selector:
+    app.kubernetes.io/name: operations-console-remote-dev
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
