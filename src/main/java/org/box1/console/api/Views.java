@@ -69,7 +69,24 @@ public final class Views {
     public record StockLevel(String sku, Integer onHand, Integer reserved, Integer available, Instant updatedAt) {
     }
 
-    public record Site(String siteId, List<StockLevel> stock) {
+    /**
+     * One site: its stock from the inventory service, its edge status from asset-service (box1-docs#130) and its map
+     * place from configuration. A site appears when any of inventory, site status or an active alert names it.
+     * {@code status} is null when the site has not reported or site status could not be read ({@code siteStatusSource}
+     * says which); {@code activeAlerts} is null when alerts could not be read.
+     */
+    public record Site(String siteId, List<StockLevel> stock, SiteStatus status, Integer activeAlerts, MapLocation location) {
+    }
+
+    /** asset-service's latest status of an edge site, with its state derived by asset-service at read time. */
+    public record SiteStatus(String state, List<String> stateReasons, Instant lastSeenAt, Long lastSeenAgeSeconds,
+        Instant lastReadingAt, Instant reportedAt, Long bufferDepth, Long siteEventBacklog, Long bufferOldestAgeSeconds,
+        Long readingsDropped, String bootedImageDigest, String stagedImageDigest, String rollbackImageDigest,
+        String greenbootStatus, String bundleDigest, Map<String, String> appVersions) {
+    }
+
+    /** A configured map place: x and y from 0 to 100 (percent from the top left), region a short label or null. */
+    public record MapLocation(double x, double y, String region) {
     }
 
     /** An active asset-service alert (box1-docs#80). */
@@ -77,8 +94,12 @@ public final class Views {
         Double threshold, Double peakValue, Double lastValue, Instant activatedAt, Instant escalatedAt) {
     }
 
-    /** {@code alerts} is empty, not invented, when asset-service did not answer; {@code sources} says why. */
-    public record SiteList(List<Site> items, List<Alert> alerts, String telemetryConsoleUrl, List<SourceStatus> sources) {
+    /**
+     * {@code alerts} is empty, not invented, when asset-service did not answer; {@code sources} says why.
+     * {@code siteStatusSource} is how asset-service answered the separate site status read (box1-docs#130).
+     */
+    public record SiteList(List<Site> items, List<Alert> alerts, String telemetryConsoleUrl, List<SourceStatus> sources,
+        SourceStatus siteStatusSource) {
     }
 
     public record ServiceRevision(String service, String gitRef, String version, String commitUrl) {

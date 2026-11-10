@@ -2,6 +2,7 @@ package org.box1.console.upstream;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
@@ -39,6 +40,22 @@ public final class Payloads {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record UpAlert(String alertId, String assetId, String siteId, String metricName, String unit, String status,
         String severity, Double threshold, Double peakValue, Double lastValue, Instant activatedAt, Instant escalatedAt) {
+    }
+
+    /**
+     * An edge site's latest status from asset-service (GET /api/v1/sites, box1-docs#130; box1-ops-contracts
+     * openapi/asset-service.yaml SiteStatus). The state is derived by asset-service at read time.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpSiteStatus(String siteId, String state, List<String> stateReasons, Instant lastSeenAt,
+        Long lastSeenAgeSeconds, Instant lastReadingAt, Instant reportedAt, Long bufferDepth, Long siteEventBacklog,
+        Long bufferOldestAgeSeconds, Long readingsDropped, String bootedImageDigest, String stagedImageDigest,
+        String rollbackImageDigest, String greenbootStatus, String bundleDigest, Map<String, String> appVersions) {
+    }
+
+    /** asset-service's GET /api/v1/sites: every site that has reported, ordered by siteId, not paged. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpSiteList(List<UpSiteStatus> items) {
     }
 
     /** One page of asset-service results. */

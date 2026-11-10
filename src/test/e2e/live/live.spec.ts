@@ -120,7 +120,9 @@ test('live: keyboard traversal and mobile width', async ({ browser }) => {
 
 test('live: place order lists the inventory service\'s sites and SKUs (read-only, nothing submitted)', async ({ page }) => {
   await signIn(page, '/orders/new');
-  const inventory = await (await page.request.get(BASE + '/api/v1/sites')).json();
+  const all = await (await page.request.get(BASE + '/api/v1/sites')).json();
+  // Sites known only from edge status or alerts (box1-docs#130) have no stock and are not offered.
+  const inventory = { items: all.items.filter((s: { stock: unknown[] }) => s.stock.length > 0) };
   const expected = inventory.items.map((s: { siteId: string }) => s.siteId);
   expect(expected.length).toBeGreaterThan(0);
   const site = page.getByRole('button', { name: /\bSite$/ });

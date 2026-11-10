@@ -19,6 +19,8 @@ import org.box1.console.upstream.Payloads.UpInfo;
 import org.box1.console.upstream.Payloads.UpOrder;
 import org.box1.console.upstream.Payloads.UpPage;
 import org.box1.console.upstream.Payloads.UpReservation;
+import org.box1.console.upstream.Payloads.UpSiteList;
+import org.box1.console.upstream.Payloads.UpSiteStatus;
 import org.box1.console.upstream.Payloads.UpStock;
 import org.box1.console.upstream.Payloads.UpTimelineEntry;
 import org.box1.console.upstream.Source;
@@ -32,6 +34,7 @@ public class ConsoleReads {
     private static final Pattern LINK = Pattern.compile("<([^>]*)>([^,]*)");
     private static final Pattern REL_NEXT = Pattern.compile(";\\s*rel\\s*=\\s*\"?([^\";]*)\"?");
     private static final Pattern SAFE_ID = Pattern.compile("^(ord|res|ful)_[A-Za-z0-9_-]{1,64}$");
+    private static final Pattern SITE_ID = Pattern.compile("^site_[A-Za-z0-9_-]{1,64}$");
     private static final TypeReference<List<UpOrder>> ORDERS = new TypeReference<>() { };
     private static final TypeReference<UpOrder> ORDER = new TypeReference<>() { };
     private static final TypeReference<List<UpTimelineEntry>> TIMELINE = new TypeReference<>() { };
@@ -40,6 +43,7 @@ public class ConsoleReads {
     private static final TypeReference<List<UpStock>> STOCK = new TypeReference<>() { };
     private static final TypeReference<UpInfo> INFO = new TypeReference<>() { };
     private static final TypeReference<UpPage<UpAlert>> ALERTS = new TypeReference<>() { };
+    private static final TypeReference<UpSiteList> SITES = new TypeReference<>() { };
     static final int MAX_ALERTS = 100;
 
     private final Upstreams upstreams;
@@ -92,6 +96,14 @@ public class ConsoleReads {
          */
         @WithDefault("false")
         boolean forwardUserToken();
+
+        /**
+         * Fixed places of sites on the Sites page map (box1-docs#130), as {@code siteId=x/y[/region]} entries: x and y
+         * are 0 to 100 (percent of the map's width and height from the top left), region a short label. Sites without
+         * an entry are listed beside the map. See {@link SiteMap}.
+         */
+        @WithDefault("site_ds9=22/48/West (site-west),site_spacedock=78/48/East (site-east),site_utopia_planitia=50/20/North,site_neutral_zone=50/80/South")
+        List<String> siteMap();
     }
 
     public Settings settings() {
@@ -106,6 +118,7 @@ public class ConsoleReads {
     }
 
     private volatile CachedProbe telemetryProbe;
+    private volatile CachedProbe siteStatusProbe;
 
     private record CachedProbe(java.time.Instant at, SourceStatus status) {
     }
@@ -198,6 +211,54 @@ public class ConsoleReads {
                 "Only the newest " + items.size() + " active alerts are shown.", s.latencyMs());
         }
         return new Listed<>(items, complete, s);
+    }
+
+    /**
+     * Every edge site's latest status from asset-service (GET /api/v1/sites, box1-docs#130), read with the same token
+     * rule and limits as {@link #activeAlerts}. The returned status describes this read alone. An asset-service that
+     * does not serve site status yet answers 404 (or refuses the unknown path); either way no status is invented.
+     */
+    public Listed<UpSiteStatus> siteStatuses(Optional<String> token) {
+        if (token.isEmpty()) {
+            CachedProbe cached = siteStatusProbe;
+            if (cached != null && cached.at().plusSeconds(60).isAfter(java.time.Instant.now())) {
+                return new Listed<>(List.of(), false, cached.status());
+            }
+        }
+        UpstreamResponse<UpSiteList> r = upstreams.get(Source.ASSET_SERVICE, "/api/v1/sites", token, SITES);
+        SourceStatus s = r.sourceStatus();
+        if (r.notFound()) {
+            return new Listed<>(List.of(), false, SourceStatus.of(Source.ASSET_SERVICE, SourceStatus.State.UNAVAILABLE,
+                "asset-service does not serve site status (HTTP 404); the deployed version may predate it.", s.latencyMs()));
+        }
+        if (s.status() == SourceStatus.State.NOT_AUTHORIZED) {
+            String detail;
+            if (token.isEmpty()) {
+                detail = "The console does not send your sign-in to asset-service, which refuses unsigned reads of site status.";
+            } else if (r.status() == 403) {
+                detail = "asset-service refused the site status read (HTTP 403): your account lacks its telemetry-reader "
+                    + "role, or the deployed asset-service does not serve site status yet.";
+            } else {
+                detail = "asset-service did not accept your sign-in from the console for site status (HTTP " + r.status() + ").";
+            }
+            s = SourceStatus.of(Source.ASSET_SERVICE, s.status(), detail, s.latencyMs());
+            if (token.isEmpty()) {
+                siteStatusProbe = new CachedProbe(java.time.Instant.now(), s);
+            }
+            return new Listed<>(List.of(), false, s);
+        }
+        if (!r.ok()) {
+            if (s.status() == SourceStatus.State.OK) {
+                // A 2xx without a body, or a 400/409: not an answer the console can use.
+                s = SourceStatus.of(Source.ASSET_SERVICE, SourceStatus.State.UNAVAILABLE,
+                    "asset-service gave no usable site status (HTTP " + r.status() + ").", s.latencyMs());
+            }
+            return new Listed<>(List.of(), false, s);
+        }
+        List<UpSiteStatus> items = r.body().items() == null ? List.of()
+            : r.body().items().stream().filter(i -> i != null && i.siteId() != null && SITE_ID.matcher(i.siteId()).matches())
+                .toList();
+        return new Listed<>(items, true, s);
     }
 
     public UpstreamResponse<UpInfo> info(Source source) {
