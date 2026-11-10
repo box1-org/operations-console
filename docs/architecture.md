@@ -60,7 +60,7 @@ Client roles `console-viewer`, `console-operator` and `console-developer` live o
 | order-service | list (2 pages of 100, newest first), get, timeline, create (pass-through with `Idempotency-Key`, `X-Consumer-Id: operations-console`) | none |
 | inventory-service | reservation by id, stock list | none (forwarding off) |
 | fulfillment-adapter | `GET /api/fulfillments/{id}` | none (forwarding off) |
-| asset-service | `GET /api/v1/alerts` (access probe, cached 60 s) | none |
+| asset-service | `GET /api/v1/alerts?status=ACTIVE&limit=100`, `GET /api/v1/sites` (site status, box1-docs#130). Without a token both are refused, and each refusal is cached 60 s | the user's token (`CONSOLE_ASSET_FORWARD_TOKEN`), which carries only `telemetry-reader` |
 | scenario-controller | catalog, runs, run, audit, fixtures; seed, start, stop, reset, confirm (actions with a 45 s timeout, `X-Correlation-Id`) | the user's token (`CONSOLE_SCENARIO_FORWARD_TOKEN`) |
 | agentic-operations | `POST /api/v1/ai/incidents/{incidentId}/analyze` and `POST /api/v1/ai/conversations/{id}/messages` (10 s timeout, `X-Correlation-Id`), `POST /api/v1/ai/conversations`, `GET /api/v1/ai/analyses/{analysisId}`, `GET /api/v1/ai/conversations/{id}` | the user's token (`CONSOLE_AIOPS_FORWARD_TOKEN`) |
 | all | `/api/info` (revisions, cached 60 s) | none |
@@ -84,6 +84,33 @@ Client roles `console-viewer`, `console-operator` and `console-developer` live o
 - The order's **Trace** evidence links to the OpenShift console trace viewer (Observe > Traces, `box1-observability/box1`, tenant `dev`) through `CONSOLE_TRACE_URL_TEMPLATE`, with `{traceId}` replaced by the order's W3C trace ID. Opening it needs OpenShift access. An empty template, or a missing or all-zero trace ID, shows the ID without a link.
 - The order's **Logs** evidence links to the OpenShift console log viewer (Observe > Logs) through `CONSOLE_LOGS_URL_TEMPLATE`: a LogQL query for application logs from every service whose JSON MDC carries the order's trace ID (`structured_mdc_traceId`), one line per entry as pod, level and message. The same trace-ID rules and OpenShift-access requirement as the trace link apply. The **Order flow dashboard** evidence links to the `box1-order-flow` dashboard in `box1-observability` (Observe > Dashboards) through `CONSOLE_DASHBOARD_URL`; it is the same for every order. Empty removes the link.
 - Logs are JSON and never include tokens, cookies or bodies.
+
+## Sites page (box1-docs#130)
+
+`GET /api/v1/sites` reads three things in parallel within the page budget: inventory stock, asset-service active alerts and
+asset-service site status. A site appears when any of them names it, so an edge site that has reported but has no stock
+rows is listed. Inventory sites come first in inventory order (the Place order page lists only sites with stock), then the
+others by `siteId`. The response is additive over 1.0.0: each site gains `status`, `activeAlerts` and `location`, and the
+list gains `siteStatusSource`.
+
+- **Status** is asset-service's `SiteStatus` (box1-ops-contracts `openapi/asset-service.yaml`). asset-service derives the
+  state when it is read: `OFFLINE` without a heartbeat for 90 s, `DEGRADED` for buffer depth of 200 or more, an oldest
+  buffered row over 5 minutes or a red greenboot, otherwise `ONLINE` (asset-service defaults, `SITE.md`). The console does
+  not recompute it; a state it does not know is shown as `UNKNOWN`.
+- **Site status read failures** are reported in `siteStatusSource`, separately from the alerts read in `sources`: an
+  asset-service from before site status serves alerts but answers 404, or 403 because it denies unlisted paths. Either way
+  the inventory sites are still returned, with `status` null, and the page says "Site status unavailable". When the same
+  token read alerts but site status was refused, the detail says the deployed asset-service may not serve site status yet.
+- **Map.** A self-contained inline SVG: a schematic outline, fixed places from `CONSOLE_SITE_MAP` and nothing loaded from
+  elsewhere, so the CSP is unchanged (`img-src 'self' data:; connect-src 'self'`). Each marker is a link to the site's row
+  in the status table, so it is reachable with Tab and has an accessible name with the state, last-seen time and alert
+  count. State is shown by a text label and a shape (circle online, triangle degraded, square offline, diamond for no or
+  unknown status), with colour only as a third cue; colours are the console's light and dark theme tokens.
+- **Table.** State and reasons, last seen (asset-service's age at read time and the absolute time), buffer depth with
+  site-event backlog, oldest-row age and dropped readings, the booted image digest (shortened; the full digest, and a
+  staged one, open from it), greenboot status, and the site's active alert count ("or more" when only the newest 100
+  alerts were read).
+- The page refreshes every 15 s, the site heartbeat interval, with a pause control.
 
 ## ERP progress
 

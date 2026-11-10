@@ -23,7 +23,7 @@ Roles are client roles on the Keycloak client `operations-console`. The backend 
 | Place order | `/orders/new` | `console-operator` |
 | Order detail (state, reservation, ERP progress, timeline, evidence) | `/orders/{id}` | viewer |
 | Incidents and evidence | `/incidents` | viewer |
-| Sites & assets | `/sites` | viewer |
+| Sites & assets: map and status of edge sites (state, last seen, buffer, booted image, greenboot, alerts), active alerts, stock per site (box1-docs#130) | `/sites` | viewer; site status and alerts need asset-service's `telemetry-reader` |
 | Delivery (deployed revisions) | `/delivery` | `console-developer` |
 | Demo control: scenario catalog, seed, start/stop/reset, live run, audit (box1-docs#19) | `/demo` | viewer; actions need operator here and `scenario-operator` on the scenario controller |
 | Assistant: chat with agentic-operations' model, which reads box1 through read-only tools; slash commands for incidents and analyses (box1-docs#101) | `/assistant` | viewer; chatting and reading analyses need `aiops-viewer` (or analyst) and starting an analysis `aiops-analyst` on agentic-operations |
@@ -62,6 +62,8 @@ These settings are deployment environment variables. Defaults are in `applicatio
 | `CONSOLE_FORWARD_USER_TOKEN` | Forward the user's access token to upstreams. Keep `false` with the public client: its tokens are obtainable by any realm user, so it carries no other service's audience | `false` |
 | `CONSOLE_SCENARIO_FORWARD_TOKEN` | Send the user's token to the scenario controller only (its audience is added by the console's Keycloak client); see docs/architecture.md | `false` |
 | `CONSOLE_AIOPS_FORWARD_TOKEN` | Send the user's token to agentic-operations only, for the Assistant (box1-docs#101). The Assistant reports "not connected" unless this and `AGENTIC_OPERATIONS_URL` are set | `false` |
+| `CONSOLE_ASSET_FORWARD_TOKEN` | Send the user's token to asset-service only, for reads of alerts and site status (box1-docs#80, #130). Without it asset-service refuses the console | `false` |
+| `CONSOLE_SITE_MAP` | Sites page map places, comma-separated `siteId=x/y[/region]` with x and y from 0 to 100 (percent from the top left). Sites without an entry are listed beside the map; an unreadable entry is skipped with a warning | `site_ds9=22/48/West (site-west),site_spacedock=78/48/East (site-east),site_utopia_planitia=50/20/North,site_neutral_zone=50/80/South` |
 | `CONSOLE_STUCK_THRESHOLD` | Time awaiting ERP acknowledgement before an order becomes an incident | `10m` |
 | `CONSOLE_ENVIRONMENT`, `TELEMETRY_CONSOLE_URL` | Shown in the header, and the link target for telemetry | dev values |
 

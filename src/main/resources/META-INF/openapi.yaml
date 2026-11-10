@@ -157,7 +157,12 @@ paths:
     get:
       tags: [console]
       operationId: listSites
-      summary: Stock by site and active asset alerts (console-viewer; alerts need the person's asset-service telemetry-reader role)
+      summary: Stock, edge status, map place and active asset alerts by site (console-viewer; alerts and site status need the person's asset-service telemetry-reader role)
+      description: >-
+        Merges the inventory service's stock rows with asset-service's site status (GET /api/v1/sites, box1-docs#130)
+        and active alerts. A site appears when any of them names it, so `items` can include sites with no stock.
+        When asset-service does not serve site status (an older version answers 404 or refuses the path), the
+        inventory sites are still returned with `status` null and `siteStatusSource` says why.
       responses:
         "200":
           description: Sites, possibly partial
@@ -756,10 +761,58 @@ components:
         updatedAt: { type: [string, "null"], format: date-time }
     Site:
       type: object
-      required: [siteId, stock]
+      required: [siteId, stock, status, activeAlerts, location]
       properties:
         siteId: { type: string }
-        stock: { type: array, items: { $ref: "#/components/schemas/StockLevel" } }
+        stock:
+          type: array
+          description: Empty for a site the inventory service has no stock rows for
+          items: { $ref: "#/components/schemas/StockLevel" }
+        status:
+          description: >-
+            The site's latest status from asset-service. Null when the site has not reported, or when site status could
+            not be read (see siteStatusSource)
+          oneOf: [{ $ref: "#/components/schemas/SiteStatus" }, { type: "null" }]
+        activeAlerts:
+          type: [integer, "null"]
+          description: Active asset-service alerts for this site in `alerts`; null when alerts could not be read
+        location:
+          description: The site's configured place on the Sites page map (console.site-map); null when it has none
+          oneOf: [{ $ref: "#/components/schemas/MapLocation" }, { type: "null" }]
+    SiteStatus:
+      type: object
+      description: >-
+        asset-service's SiteStatus (box1-ops-contracts openapi/asset-service.yaml) without siteId. The state is derived by
+        asset-service when it was read: OFFLINE when no heartbeat arrived within its offline threshold, DEGRADED for a
+        deep or old buffer or a red greenboot, otherwise ONLINE. UNKNOWN stands for a value this console does not know.
+      required: [state, stateReasons, lastSeenAt, lastSeenAgeSeconds, reportedAt, bufferDepth, siteEventBacklog, bufferOldestAgeSeconds, readingsDropped, greenbootStatus, appVersions]
+      properties:
+        state: { type: string, enum: [ONLINE, DEGRADED, OFFLINE, UNKNOWN] }
+        stateReasons:
+          type: array
+          description: Why the site is not ONLINE (HEARTBEAT_STALE, BUFFER_DEPTH, BUFFER_AGE, GREENBOOT_RED); clients must tolerate new values
+          items: { type: string }
+        lastSeenAt: { type: [string, "null"], format: date-time, description: When asset-service received the latest status }
+        lastSeenAgeSeconds: { type: [integer, "null"], description: Seconds since lastSeenAt when asset-service answered }
+        lastReadingAt: { type: [string, "null"], format: date-time }
+        reportedAt: { type: [string, "null"], format: date-time, description: The site's own clock when it sent the status }
+        bufferDepth: { type: [integer, "null"], description: Unpublished outbox rows (readings and site events) }
+        siteEventBacklog: { type: [integer, "null"], description: Unpublished site events, which are never dropped }
+        bufferOldestAgeSeconds: { type: [integer, "null"] }
+        readingsDropped: { type: [integer, "null"] }
+        bootedImageDigest: { type: [string, "null"], description: The OS image digest the site booted (sha256:...) }
+        stagedImageDigest: { type: [string, "null"] }
+        rollbackImageDigest: { type: [string, "null"] }
+        greenbootStatus: { type: [string, "null"], description: "GREEN, RED or UNKNOWN as the site reports it" }
+        bundleDigest: { type: [string, "null"] }
+        appVersions: { type: object, additionalProperties: { type: string } }
+    MapLocation:
+      type: object
+      required: [x, y, region]
+      properties:
+        x: { type: number, minimum: 0, maximum: 100, description: Percent of the map's width from the left }
+        y: { type: number, minimum: 0, maximum: 100, description: Percent of the map's height from the top }
+        region: { type: [string, "null"] }
     Alert:
       type: object
       required: [alertId, siteId, assetId, metricName, severity]
@@ -777,7 +830,7 @@ components:
         escalatedAt: { type: [string, "null"], format: date-time }
     SiteList:
       type: object
-      required: [items, alerts, telemetryConsoleUrl, sources]
+      required: [items, alerts, telemetryConsoleUrl, sources, siteStatusSource]
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/Site" } }
         alerts:
@@ -786,6 +839,11 @@ components:
           items: { $ref: "#/components/schemas/Alert" }
         telemetryConsoleUrl: { type: string }
         sources: { $ref: "#/components/schemas/Sources" }
+        siteStatusSource:
+          description: >-
+            How asset-service answered the site status read (box1-docs#130), kept apart from the alerts read in
+            `sources` because an older asset-service serves alerts but not site status
+          allOf: [{ $ref: "#/components/schemas/SourceStatus" }]
     ServiceRevision:
       type: object
       required: [service]

@@ -4,7 +4,7 @@ import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 
 const port = Number(process.env.STUB_PORT || 18081);
-const control = { order: 'ok', inventory: 'ok', fulfillment: 'ok', asset: 'refuse', aiops: 'ok' }; // aiops: ok|busy|modeldown|down
+const control = { order: 'ok', inventory: 'ok', fulfillment: 'ok', asset: 'refuse', aiops: 'ok' }; // aiops: ok|busy|modeldown|down; asset: refuse|ok|nosites|down
 const analyses = new Map();    // ana_x -> {incidentId, orderId, createdAt, outcome}
 const conversations = new Map(); // conv_x -> {owner, createdAt, turns: [{turnId, question, started, outcome}]}
 const orders = new Map();      // orderId -> order
@@ -99,10 +99,41 @@ async function handle(req, res) {
     if (m && fulfillments.has(m[1])) return send(res, 200, fulfillments.get(m[1]));
     return send(res, 404, problem(404, 'Not Found'));
   }
-  if (svc === 'asset') return send(res, 401, problem(401, 'Unauthorized'));
+  if (svc === 'asset') return asset(res, path, mode);
   if (svc === 'aiops') return aiops(req, res, path);
   send(res, 404, problem(404, 'Not Found'));
 }
+const DIGEST_A = 'sha256:a11d6786b9a86378148ae55194acfd1cfb2d150ad298334fe00798d026abe3fe';
+const DIGEST_B = 'sha256:8e9d01383c43e37cbf30b083be311866dc9806158fa09062ede88f9afb41edb6';
+/** One asset-service SiteStatus (box1-ops-contracts openapi/asset-service.yaml), seen `age` seconds ago. */
+function siteStatus(siteId, state, stateReasons, age, extra = {}) {
+  const seen = new Date(Date.now() - age * 1000).toISOString();
+  return { siteId, state, stateReasons, lastSeenAt: seen, lastSeenAgeSeconds: age, lastReadingAt: seen, reportedAt: seen,
+    bufferDepth: 3, siteEventBacklog: 0, bufferOldestAgeSeconds: 2, readingsDropped: 0, bootedImageDigest: DIGEST_A,
+    stagedImageDigest: null, rollbackImageDigest: null, greenbootStatus: 'GREEN', bundleDigest: DIGEST_B,
+    appVersions: { gateway: '1.0.0', ops: '1.0.0', simulator: '1.0.0' }, ...extra };
+}
+
+/**
+ * asset-service. refuse: 401 for everything, as when the console sends no token (the default). ok: alerts and site
+ * status (box1-docs#130). nosites: alerts, but 404 for site status, as an asset-service from before it.
+ */
+function asset(res, path, mode) {
+  if (mode === 'refuse') return send(res, 401, problem(401, 'Unauthorized'));
+  if (path === '/api/v1/alerts') {
+    return send(res, 200, { items: [{ alertId: 'alt_e2e_1', assetId: 'asset_pump_7', siteId: 'site_spacedock', metricName: 'temperature',
+      unit: 'C', status: 'ACTIVE', severity: 'CRITICAL', threshold: 80, firstValue: 81, peakValue: 96.5, lastValue: 92, readingCount: 4,
+      activatedAt: now(), activatedMeasuredAt: now(), escalatedAt: null, clearedAt: null }], nextCursor: null });
+  }
+  if (path === '/api/v1/sites' && mode === 'ok') {
+    return send(res, 200, { items: [
+      siteStatus('site_ds9', 'ONLINE', [], 6),
+      siteStatus('site_spacedock', 'DEGRADED', ['BUFFER_DEPTH'], 9, { bufferDepth: 240, siteEventBacklog: 4, bufferOldestAgeSeconds: 95 }),
+      siteStatus('site_utopia_planitia', 'OFFLINE', ['HEARTBEAT_STALE'], 420, { greenbootStatus: 'UNKNOWN', bootedImageDigest: null })] });
+  }
+  return send(res, 404, problem(404, 'Not Found'));
+}
+
 /** The claims of a bearer JWT, unverified (Keycloak issued it to the console in this local stack). */
 function claims(req) {
   const m = (req.headers.authorization || '').match(/^Bearer ([^.]+)\.([^.]+)\./);

@@ -14,7 +14,7 @@
 - Metrics:
   - `console_upstream_calls_total{source,outcome}` counts calls by outcome (`OK`, `UNAVAILABLE`, `NOT_AUTHORIZED`, `DEGRADED`, `NOT_CONFIGURED`). A rising `UNAVAILABLE` count for one source matches the "Partial data" banner users see.
   - `console_upstream_duration_seconds{source,outcome}` gives upstream latency.
-  - `asset-service` stays `NOT_AUTHORIZED` by design (gap G-2). It is probed at most once a minute.
+  - `asset-service` is `NOT_AUTHORIZED` when the console sends no token (`CONSOLE_ASSET_FORWARD_TOKEN` off). Its refusals of unsigned reads (alerts and site status) are cached, so it is probed at most once a minute each.
 - Logs: JSON with `mdc.traceId`.
   - Each failed upstream call writes one WARN line: `upstream=<source> outcome=<OUTCOME> http=<status> latencyMs=<n>`. It never includes the URL, headers or body.
   - The browser starts the trace, and the same trace ID is propagated to the upstream services' own logs.
@@ -33,7 +33,11 @@
 | Keycloak "Invalid parameter: redirect_uri" | The client's redirect URI is not exactly `<route>/callback` | Fix the KeycloakClient in box1-gitops |
 | Page loads return 500, `/api/v1/*` returns 401, logs show `OidcProviderClientImpl` errors | Keycloak is unreachable (discovery or token endpoint) | Check Keycloak. Readiness stays UP by design: the console cannot help without it, and restarting does not help |
 | One failed login during a rollout | `maxSurge: 1` runs old and new pods briefly, each with its own session key | Sign in again |
-| Sites shows "refused the console" | Gap G-2 | Expected |
+| Sites shows "refused the console" | asset-service refused the console's read (no token: `CONSOLE_ASSET_FORWARD_TOKEN` off, or the person lacks `telemetry-reader`) | Set `CONSOLE_ASSET_FORWARD_TOKEN=true`; assign the role in Keycloak |
+| Sites: "Site status unavailable … (HTTP 404)" or "… may not serve site status yet" | The deployed asset-service predates site status (box1-docs#130) | Expected until asset-service with `GET /api/v1/sites` is promoted. Stock and alerts still show |
+| Sites: a site shows "No status reported" | asset-service has no heartbeat from it: a non-edge (seed) site, or a site agent that never reached asset-service | For `site_ds9` and `site_spacedock`, check the site agent and its route to asset-service |
+| Sites: a site shows "Offline" | asset-service received no heartbeat within its offline threshold (90 s default) | Check the site VM and its network; the state returns to Online with the next heartbeat |
+| Sites: a site is not on the map | No `CONSOLE_SITE_MAP` entry for it, or an unreadable entry (logged once at start as a WARN naming the entry's position) | Add or fix `siteId=x/y[/region]` in the Deployment env |
 | Assistant: "The assistant is not connected" | `AGENTIC_OPERATIONS_URL` or `CONSOLE_AIOPS_FORWARD_TOKEN` is unset | Set both in box1-workloads-dev |
 | Assistant: 403 `AIOPS_ROLE_REQUIRED` | agentic-operations refused the person: no `aiops-viewer`/`aiops-analyst` role, or `operations-console` is missing from its `AIOPS_ALLOWED_AZP`, or the console client lacks the audience/scope mapping | Assign the role in Keycloak; check `AIOPS_ALLOWED_AZP` and the `operations-console` KeycloakClient |
 | Assistant: 429 `ASSISTANT_BUSY` | agentic-operations' model queue is full (one vLLM slot, queue bound 4) | Wait for `Retry-After` and try again |

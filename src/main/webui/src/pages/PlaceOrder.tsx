@@ -94,8 +94,10 @@ export function PlaceOrder() {
 
   const inventory = sites.state.kind === 'ready'
     ? sites.state.data.sources.find((s) => s.source === 'inventory-service') : undefined;
-  const catalog: Site[] | null = sites.state.kind === 'ready' && inventory?.status === 'OK' && sites.state.data.items.length > 0
-    ? sites.state.data.items : null;
+  // /api/v1/sites also lists sites known only from edge status or alerts (box1-docs#130); only stocked sites are offered.
+  const stocked = sites.state.kind === 'ready' ? sites.state.data.items.filter((s) => s.stock.length > 0) : [];
+  const catalog: Site[] | null = sites.state.kind === 'ready' && inventory?.status === 'OK' && stocked.length > 0
+    ? stocked : null;
   return (
     <>
       <title>Place order · box1 Operations</title>

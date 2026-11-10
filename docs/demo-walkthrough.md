@@ -49,6 +49,23 @@ The Assistant (box1-docs#101) needs `aiops-analyst` on agentic-operations. Use i
 3. Suggested actions appear under **Proposed only — never executed**. Nothing on the page can carry them out.
    ![Assistant](screenshots/20-assistant-analysis.png)
 
+## Edge sites (box1-docs#130)
+
+**Sites & assets** shows each site on a schematic map and in a status table. `site_ds9` (VM `site-west`) is on the west
+side and `site_spacedock` (VM `site-east`) on the east; other places come from `CONSOLE_SITE_MAP`, and sites without one
+are listed beside the map. Each state has a word and a shape: circle with a tick **Online**, triangle **Degraded**, square
+with a cross **Offline**, dashed diamond for no status. Tab reaches each map marker; Enter moves to its row, which shows
+the reasons, last seen, buffer depth and site-event backlog, booted image digest (open it for the full digest),
+greenboot and active alerts. The page refreshes every 15 s.
+
+![Sites map](screenshots/12-sites-map.png)
+
+Local e2e stubs: `site_ds9` online, `site_spacedock` degraded (buffer depth 240), `site_utopia_planitia` offline,
+`site_east` and `site_west` with stock but no status. If asset-service does not serve site status yet, the page says
+**Site status unavailable** and still lists the inventory sites:
+
+![Site status unavailable](screenshots/13-sites-status-unavailable.png)
+
 ## Failure views
 
 - When the fulfillment adapter is unreachable, the page shows **ERP detail unavailable** next to the order service's state.

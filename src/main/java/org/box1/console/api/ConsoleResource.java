@@ -38,6 +38,7 @@ import org.box1.console.domain.ConsoleReads;
 import org.box1.console.domain.ConsoleReads.Listed;
 import org.box1.console.domain.ErpProgressMapper;
 import org.box1.console.domain.Incidents;
+import org.box1.console.domain.SiteMap;
 import org.box1.console.domain.StateLabels;
 import org.box1.console.domain.TimelineText;
 import org.box1.console.security.AssetToken;
@@ -49,6 +50,7 @@ import org.box1.console.upstream.Payloads.UpFulfillment;
 import org.box1.console.upstream.Payloads.UpInfo;
 import org.box1.console.upstream.Payloads.UpOrder;
 import org.box1.console.upstream.Payloads.UpReservation;
+import org.box1.console.upstream.Payloads.UpSiteStatus;
 import org.box1.console.upstream.Payloads.UpTimelineEntry;
 import org.box1.console.upstream.Source;
 import org.box1.console.upstream.SourceStatus;
@@ -77,13 +79,14 @@ public class ConsoleResource {
     private final InfoResource selfInfo;
     private final ScenarioToken scenarioToken;
     private final AssetToken assetToken;
+    private final SiteMap siteMap;
     private final Map<Source, CachedInfo> infoCache = new ConcurrentHashMap<>();
 
     record CachedInfo(Instant at, UpstreamResponse<UpInfo> response) {
     }
 
     public ConsoleResource(ConsoleReads reads, Upstreams upstreams, UpstreamConfig upstreamConfig, Fanout fanout,
-        SecurityIdentity identity, InfoResource selfInfo, ScenarioToken scenarioToken, AssetToken assetToken) {
+        SecurityIdentity identity, InfoResource selfInfo, ScenarioToken scenarioToken, AssetToken assetToken, SiteMap siteMap) {
         this.reads = reads;
         this.upstreams = upstreams;
         this.upstreamConfig = upstreamConfig;
@@ -92,6 +95,7 @@ public class ConsoleResource {
         this.selfInfo = selfInfo;
         this.scenarioToken = scenarioToken;
         this.assetToken = assetToken;
+        this.siteMap = siteMap;
     }
 
     @GET
@@ -238,14 +242,16 @@ public class ConsoleResource {
         Future<Listed<UpStockAlias>> stockF = fanout.submit(() -> wrapStock(reads.stock(token)));
         Optional<String> assetBearer = assetToken.forAssetService();
         Future<Listed<UpAlertAlias>> alertsF = fanout.submit(() -> wrapAlerts(reads.activeAlerts(assetBearer)));
+        Future<Listed<UpSiteStatusAlias>> statusF = fanout.submit(() -> wrapSiteStatus(reads.siteStatuses(assetBearer)));
         Listed<UpStockAlias> stock = Fanout.await(stockF, deadline, new Listed<>(List.of(), false, late(Source.INVENTORY_SERVICE)));
         Listed<UpAlertAlias> alerts = Fanout.await(alertsF, deadline, new Listed<>(List.of(), false, late(Source.ASSET_SERVICE)));
+        Listed<UpSiteStatusAlias> statuses = Fanout.await(statusF, deadline,
+            new Listed<>(List.of(), false, late(Source.ASSET_SERVICE)));
         Map<String, List<Views.StockLevel>> bySite = new LinkedHashMap<>();
         for (UpStockAlias s : stock.items()) {
             bySite.computeIfAbsent(s.value().siteId(), k -> new ArrayList<>()).add(new Views.StockLevel(s.value().sku(),
                 s.value().onHand(), s.value().reserved(), s.value().available(), s.value().updatedAt()));
         }
-        List<Views.Site> sites = bySite.entrySet().stream().map(e -> new Views.Site(e.getKey(), e.getValue())).toList();
         SourceStatus stockStatus = stock.status();
         if (!stock.complete() && stockStatus.status() == SourceStatus.State.OK) {
             stockStatus = SourceStatus.of(Source.INVENTORY_SERVICE, SourceStatus.State.DEGRADED,
@@ -254,7 +260,32 @@ public class ConsoleResource {
         List<Views.Alert> active = alerts.items().stream().map(UpAlertAlias::value).map(a -> new Views.Alert(a.alertId(),
             a.siteId(), a.assetId(), a.metricName(), a.unit(), a.severity(), a.threshold(), a.peakValue(), a.lastValue(),
             a.activatedAt(), a.escalatedAt())).toList();
-        return new Views.SiteList(sites, active, reads.settings().telemetryConsoleUrl(), List.of(stockStatus, alerts.status()));
+        SourceStatus.State alertsState = alerts.status().status();
+        boolean alertsRead = alertsState == SourceStatus.State.OK || alertsState == SourceStatus.State.DEGRADED;
+        SourceStatus statusSource = statuses.status();
+        if (statusSource.status() == SourceStatus.State.NOT_AUTHORIZED && alertsState == SourceStatus.State.OK
+            && assetBearer.isPresent()) {
+            // The same token read alerts, so the reader role is not what is missing (box1-docs#130).
+            statusSource = SourceStatus.of(Source.ASSET_SERVICE, statusSource.status(), "asset-service answered the alerts "
+                + "read but refused the site status read: the deployed asset-service may not serve site status yet.",
+                statusSource.latencyMs());
+        }
+        Map<String, Views.SiteStatus> statusBySite = new LinkedHashMap<>();
+        statuses.items().stream().map(UpSiteStatusAlias::value).forEach(st -> statusBySite.put(st.siteId(), view(st)));
+        Map<String, Integer> alertsBySite = new LinkedHashMap<>();
+        active.stream().filter(a -> a.siteId() != null).forEach(a -> alertsBySite.merge(a.siteId(), 1, Integer::sum));
+
+        // Inventory order first (the place-order page lists sites in that order), then the others by siteId.
+        List<String> ids = new ArrayList<>(bySite.keySet());
+        java.util.TreeSet<String> others = new java.util.TreeSet<>(statusBySite.keySet());
+        others.addAll(alertsBySite.keySet());
+        others.removeIf(bySite::containsKey);
+        ids.addAll(others);
+        List<Views.Site> sites = ids.stream().map(id -> new Views.Site(id, bySite.getOrDefault(id, List.of()),
+            statusBySite.get(id), alertsRead ? alertsBySite.getOrDefault(id, 0) : null,
+            siteMap.locate(id).map(l -> new Views.MapLocation(l.x(), l.y(), l.region())).orElse(null))).toList();
+        return new Views.SiteList(sites, active, reads.settings().telemetryConsoleUrl(), List.of(stockStatus, alerts.status()),
+            statusSource);
     }
 
     @GET
@@ -294,6 +325,30 @@ public class ConsoleResource {
 
     /** Lets a typed alert list cross the Fanout without an unchecked generic array. */
     record UpAlertAlias(org.box1.console.upstream.Payloads.UpAlert value) {
+    }
+
+    /** Lets a typed site status list cross the Fanout without an unchecked generic array. */
+    record UpSiteStatusAlias(UpSiteStatus value) {
+    }
+
+    private static Listed<UpSiteStatusAlias> wrapSiteStatus(Listed<UpSiteStatus> listed) {
+        return new Listed<>(listed.items().stream().map(UpSiteStatusAlias::new).toList(), listed.complete(), listed.status());
+    }
+
+    private static final java.util.Set<String> SITE_STATES = java.util.Set.of("ONLINE", "DEGRADED", "OFFLINE");
+
+    /** An unknown future state is shown as UNKNOWN rather than guessed (the console contract lists the values). */
+    static Views.SiteStatus view(UpSiteStatus s) {
+        String state = s.state() != null && SITE_STATES.contains(s.state()) ? s.state() : "UNKNOWN";
+        return new Views.SiteStatus(state, s.stateReasons() == null ? List.of()
+            : s.stateReasons().stream().filter(java.util.Objects::nonNull).toList(),
+            s.lastSeenAt(), s.lastSeenAgeSeconds(), s.lastReadingAt(), s.reportedAt(), s.bufferDepth(), s.siteEventBacklog(),
+            s.bufferOldestAgeSeconds(), s.readingsDropped(), s.bootedImageDigest(), s.stagedImageDigest(),
+            s.rollbackImageDigest(), s.greenbootStatus(), s.bundleDigest(),
+            s.appVersions() == null ? Map.of() : s.appVersions().entrySet().stream()
+                .filter(e -> e.getKey() != null && e.getValue() != null)
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a,
+                    java.util.TreeMap::new)));
     }
 
     private static Listed<UpAlertAlias> wrapAlerts(Listed<org.box1.console.upstream.Payloads.UpAlert> listed) {
